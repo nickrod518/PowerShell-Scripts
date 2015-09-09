@@ -1,6 +1,23 @@
 # displays the verbose messages which can help troubleshoot
 $VerbosePreference = "Continue"
 
+# log path created using date
+$log_date = ( get-date ).ToString('yyyyMMdd-hhmm')
+$time = get-date
+$log_file = ".\logs\ReplicateDHCPFilters" + $log_date + ".log"
+
+# check for a logs folder
+if (Test-Path ".\logs") {
+} else {
+    New-Item -ItemType directory -Path ".\logs"
+}
+
+# check for log file and create if it doesn't exist
+if (Test-Path $log_file) {
+} else {
+    $log_file = New-Item -type file $log_file
+}
+
 # source server that the lists will come from
 $sourceServer = 'DHCP01'
 
@@ -21,6 +38,7 @@ try {
 
         if ($allow_count -eq (Get-DhcpServerv4Filter -ComputerName $sourceServer -List Allow).Count) {
             Write-Verbose -message "Successfully exported $allow_count items!"
+            Add-Content $log_file "$time : Exported $allow_count Allow items"
         } else {
             $Host.UI.WriteErrorLine("ERROR: Something went horribly wrong when exporting the Allow List from $sourceServer...")
             exit 999
@@ -28,6 +46,7 @@ try {
 
     } else {
         Write-Verbose -message "The Allow List was empty and will not be imported."
+        Add-Content $log_file "$time : Allow list was empty"
     }
 } catch {
     $Host.UI.WriteErrorLine("ERROR: Something went horribly wrong when exporting the Allow List from $sourceServer...")
@@ -46,6 +65,7 @@ try {
 
         if ($deny_count -eq (Get-DhcpServerv4Filter -ComputerName $sourceServer -List Deny).Count) {
             Write-Verbose -message "Successfully exported $deny_count items!"
+            Add-Content $log_file "$time : Exported $deny_count Deny items"
         } else {
             $Host.UI.WriteErrorLine("ERROR: Something went horribly wrong when exporting the Deny List from $sourceServer...")
             exit 999
@@ -53,6 +73,7 @@ try {
 
     } else {
         Write-Verbose -message "The Deny List was empty and will not be imported."
+        Add-Content $log_file "$time : Deny list was empty"
     }
 } catch {
     $Host.UI.WriteErrorLine("ERROR: Something went horribly wrong when exporting the Deny List from $sourceServer...")
@@ -87,6 +108,7 @@ foreach ($destinationServer in $servers) {
     }
 
     Write-Verbose "Import on $destinationServer complete!"
+    Add-Content $log_file "$time : Import on $destinationServer complete"
 }
 
 pause
