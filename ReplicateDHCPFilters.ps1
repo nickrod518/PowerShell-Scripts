@@ -52,7 +52,7 @@ $importScript = {
 $allow_list = Export-List Allow
 $deny_list = Export-List Deny
 
-# import lists on each destination server
+# import lists on each destination server using background jobs
 Write-Verbose "Starting import of filter lists on $($servers.Count) servers..."
 foreach ($server in $servers) {
     $script = {
@@ -67,21 +67,19 @@ foreach ($server in $servers) {
     }
 }
 
-# Idle loop
+# monitor jobs until they are all completed
 While (1) {
-    $JobsRunning = 0
-
+    $jobsRunning = 0
     foreach ($job in Get-Job) {
         if ($job.State -eq "Running") {
-            $JobsRunning += 1
+            $jobsRunning += 1
         } elseif ($job.State -eq "Completed") {
             Write-Verbose "$($job.Name) list import complete!"
             Add-Content $log_file "$(Get-Date) - $($job.Name) list import complete."
             Remove-Job $job
         }
    }
-
-   if ($JobsRunning -eq 0) {
+   if ($jobsRunning -eq 0) {
        Break
    }
    Start-Sleep 1
