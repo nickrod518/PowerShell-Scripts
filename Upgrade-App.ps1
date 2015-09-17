@@ -20,23 +20,21 @@ function UpgradeApp {
     Some appications will not uninstall or install if they are currently running. Provide any process names as they would appear in Task Manager (without the ".exe").
     .PARAMETER installer
     The path to the msi or exe installer.
-    .PARAMETER flags
-    "/qn" by default. Any additional flags to pass to the installer.
     .PARAMETER config
     If there is a config file you would like to provide, give a string array with source and destination here.
     #>
-    [CmdletBinding()]
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
 
+    [CmdletBinding()]
     param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [bool]$GUIDUninstall = $false,
         [string[]]$oldGUIDs,
         [string]$oldAppName,
-        [string[]]$AppProcesses = 0,
+        [string[]]$AppProcesses = $null,
         [string]$installer,
-        [string]$flags = "/qn/",
-        [string[]]$config = 0
+        [string[]]$config = $null
     )
 
     # see if app processes are running in the background
@@ -64,9 +62,9 @@ function UpgradeApp {
         # install the new app either via msi or exe using quiet flags
         $installerExt = (Get-Item $installer).extension
         if ($installerExt -eq '.msi') {
-            Start-Process msiexec -Wait -ArgumentList "$flags /i $installer"
+            Start-Process msiexec -Wait -ArgumentList "/qn /i $installer"
         } else {
-            Start-Process $installer -Wait -ArgumentList $flags
+            Start-Process $installer -Wait -ArgumentList "/qn"
         }
 
         # copy over any config file that would make deployment more easy
@@ -92,7 +90,7 @@ function UpgradeApp {
                     Stop-Process -ProcessName $AppProcess -Force -ErrorAction SilentlyContinue
                 }
             }
-            
+
             # give the processes 5 seconds to die
             Start-Sleep -s 5
 

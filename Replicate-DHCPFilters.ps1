@@ -9,6 +9,9 @@ $servers = @(
 'DHCP04'
 )
 
+# number of simultaneous jobs to run at one time - throttling is necessary to prevent the script from crashing
+$maxJobs = 2
+
 # displays the verbose messages which can help troubleshoot
 $VerbosePreference = "Continue"
 
@@ -30,12 +33,31 @@ function Export-List ($listType) {
     $listCount = $list.Count
     if ($listCount) {
         Write-Verbose "Successfully exported $listCount $listType items from $Script:sourceServer!"
-        Add-Content $log_file "$(Get-Date) - Exported $listCount $listType items from $Script:sourceServer."
+        Add-Content $Script:log_file "$(Get-Date) - Exported $listCount $listType items from $Script:sourceServer."
     } else {
         Write-Verbose "The $listType list on $Script:sourceServer was empty and will be ignored."
-        Add-Content $log_file "$(Get-Date) - The $listType list on $Script:sourceServer was empty and will be ignored."
+        Add-Content $Script:log_file "$(Get-Date) - The $listType list on $Script:sourceServer was empty and will be ignored."
     }
     return $list
+}
+
+# limit concurrent jobs
+function Throttle-Jobs {
+    param([int] $maxJobs)
+    while ( (Get-Job -State Running | Measure-Object).Count -ge $maxJobs ) {
+        Start-Sleep 1
+    }
+}
+
+# clear completed jobs and add to log
+function Clear-CompletedJobs {
+    foreach ($job in Get-Job) {
+        if ($job.State -eq "Completed") {
+            Write-Verbose "$($job.Name) list import complete!"
+            Add-Content $Script:log_file "$(Get-Date) - $($job.Name) list import complete."
+            Remove-Job $job
+        }
+   }
 }
 
 # import the provided filter list onto designated server
@@ -53,36 +75,28 @@ $allow_list = Export-List Allow
 $deny_list = Export-List Deny
 
 # import lists on each destination server using background jobs
-Write-Verbose "Starting import of filter lists on $($servers.Count) servers..."
+Write-Verbose "Starting import of filter lists on $($servers.Count) servers with $maxJobs asynchronous jobs..."
 foreach ($server in $servers) {
+    Throttle-Jobs $maxJobs
+    Clear-CompletedJobs
     $script = {
         param($server, $list, $listType)
         Import-List $server $list $listType
     }
     if ($allow_list.Count) {
-        Start-Job -Name "$server allow" -Command $script -InitializationScript $importScript -Args $server, $allow_list, Allow
+        Write-Verbose "Starting import of allow list on $server..."
+        Start-Job -Name "$server allow" -Command $script -InitializationScript $importScript -Args $server, $allow_list, Allow | Out-Null
     }
     if ($deny_list.Count) {
-        Start-Job -Name "$server deny" -Command $script -InitializationScript $importScript -Args $server, $deny_list, Deny
+        Write-Verbose "Starting import of deny list on $server..."
+        Start-Job -Name "$server deny" -Command $script -InitializationScript $importScript -Args $server, $deny_list, Deny | Out-Null
     }
 }
 
-# monitor jobs until they are all completed
-While (1) {
-    $jobsRunning = 0
-    foreach ($job in Get-Job) {
-        if ($job.State -eq "Running") {
-            $jobsRunning += 1
-        } elseif ($job.State -eq "Completed") {
-            Write-Verbose "$($job.Name) list import complete!"
-            Add-Content $log_file "$(Get-Date) - $($job.Name) list import complete."
-            Remove-Job $job
-        }
-   }
-   if ($jobsRunning -eq 0) {
-       Break
-   }
-   Start-Sleep 1
+# watch the remaining jobs to complete
+While (Get-Job) {
+    Clear-CompletedJobs
+    Start-Sleep 1
 }
 
 Write-Verbose "Replication complete!"
