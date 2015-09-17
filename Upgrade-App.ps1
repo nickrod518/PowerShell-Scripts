@@ -78,6 +78,14 @@ function UpgradeApp {
     # process found
     } else {
 
+        # in two seconds, bring the msgbox we create to focus
+        Invoke-Command -ScriptBlock {
+            Start-Sleep 2
+            [void] [System.Reflection.Assembly]::LoadWithPartialName("'Microsoft.VisualBasic")
+            $msg = Get-Process | Where-Object {$_.Name -like "powershell"}
+            [Microsoft.VisualBasic.Interaction]::AppActivate($msg.ID)
+        }
+
         # ask the user how to proceed
         $ready = [System.Windows.Forms.MessageBox]::Show(
             "Installation cannot continue because [Application] is currently running. Press `"OK`" to automatically close the [Application] and continue with the upgrade or press `"Cancel`" to try again later",

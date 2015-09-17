@@ -1,4 +1,4 @@
-function ChromeEnterpriseUpgrade {
+function Upgrade-ChromeEnterprise {
     [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
 
     # see if app processes are running in the background
@@ -27,16 +27,25 @@ function ChromeEnterpriseUpgrade {
         }
 
         # install the new app either via msi using quiet flags
-        $process = Start-Process msiexec -PassThru -Wait -ArgumentList "/qn /i googlechromestandaloneenterprise.msi /log C:\FTG\Logs\GoogleChromeEnterprise.log"
-        $CMExitCode = $process.ExitCode
+        $installArgs = "/qn /i googlechromestandaloneenterprise.msi /norestart /log C:\FTG\Logs\GoogleChromeEnterprise.log"
+        $install = Start-Process msiexec -PassThru -Wait -Args $installArgs
+        $CMExitCode = $install.ExitCode
 
     # process found
     } else {
 
+        # in two seconds, bring the msgbox we create to focus
+        Invoke-Command -ScriptBlock {
+            Start-Sleep 2
+            [void] [System.Reflection.Assembly]::LoadWithPartialName("'Microsoft.VisualBasic")
+            $msg = Get-Process | Where-Object {$_.Name -like "powershell"}
+            [Microsoft.VisualBasic.Interaction]::AppActivate($msg.ID)
+        }
+
         # ask the user how to proceed
         $ready = [System.Windows.Forms.MessageBox]::Show(
             "Installation cannot continue because Chrome is currently running. Press `"OK`" to automatically close Chrome and continue with the upgrade or press `"Cancel`" to try again later",
-            "Google Chrome Install", 1)
+            "Google Chrome Enterprise Install", 1)
 
         if ($ready -eq "OK") {
             # kill the process
@@ -46,7 +55,7 @@ function ChromeEnterpriseUpgrade {
             Start-Sleep -s 5
 
             # try again
-            UpgradeApp
+            Upgrade-ChromeEnterprise
         } elseif ($ready -eq "Cancel") {
             # abort
             exit 999
@@ -55,4 +64,4 @@ function ChromeEnterpriseUpgrade {
 
     exit $CMExitCode
 }
-ChromeEnterpriseUpgrade
+Upgrade-ChromeEnterprise
