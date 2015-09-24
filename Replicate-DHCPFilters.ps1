@@ -17,14 +17,9 @@ $VerbosePreference = "Continue"
 
 # log path created using date
 $log_date = (Get-Date).ToString('-yyyyMMdd-HHmm')
-$log_file = ".\logs\ReplicateDHCPFilters" + $log_date + ".log"
-
-# check for log file and create if it doesn't exist
-if (Test-Path ".\logs") {
-    $log_file = New-Item -type file $log_file
-} else {
-    $log_file = New-Item -type file $log_file
-}
+$scriptPath = Split-Path $MyInvocation.MyCommand.Path -Parent
+$log_file = "$scriptPath\logs\Replicate-DHCPFilters" + $log_date + ".log"
+$log_file = New-Item -type file $log_file -Force
 
 # get the filter list from the designated server
 function Export-List ($listType) {
@@ -61,12 +56,14 @@ function Clear-CompletedJobs {
 }
 
 # import the provided filter list onto designated server
-# repeat until the item count on the destination matches the source list count
+# repeat until the item count on the source list is less than or equal to the destination count
 $importScript = {
     function Import-List ($server, $list, $listType, $log_file) {
-        while ($list.Count -ne (Get-DhcpServerv4Filter -Cn $server -List $listType).Count) {
-            $list | Add-DhcpServerv4Filter -Cn $server -List $listType -Force
-        }
+        $destinationCount = 0
+		do {
+			($list | Add-DhcpServerv4Filter -Cn $server -List $listType -Force),
+			($destinationCount = (Get-DhcpServerv4Filter -Cn $server -List $listType).Count)
+		} until ($list.Count -le $destinationCount)
     }
 }
 
@@ -100,3 +97,5 @@ While (Get-Job) {
 }
 
 Write-Verbose "Replication complete!"
+
+Send-MailMessage -To "sysadmin@company.com" -From "alert@company.com" -Subject "DHCP Filter" -Body $(Get-Content $log_file | Out-String) -SmtpServer smtp.server.local
