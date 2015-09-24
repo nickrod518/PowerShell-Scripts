@@ -28,13 +28,12 @@ function UpgradeApp {
 
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [bool]$GUIDUninstall = $false,
-        [string[]]$oldGUIDs,
-        [string]$oldAppName,
-        [string[]]$AppProcesses = $null,
-        [string]$installer,
-        [string[]]$config = $null
+        [Parameter(Mandatory = $false, ValueFromPipeline = $true)][bool]$GUIDUninstall = $false,
+        [Parameter(Mandatory = $false, ValueFromPipeline = $true)][string[]]$oldGUIDs,
+        [Parameter(Mandatory = $false, ValueFromPipeline = $true)][string]$oldAppName,
+        [Parameter(Mandatory = $false, ValueFromPipeline = $true)][string[]]$AppProcesses = $null,
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)][string]$installer,
+        [Parameter(Mandatory = $false, ValueFromPipeline = $true)][string[]]$config = $null
     )
 
     # see if app processes are running in the background
