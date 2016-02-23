@@ -34,3 +34,4 @@ try {
 } catch {
 	Read-Host "There was a problem zipping the thumbnails directory. PowerShell 3.0+ and .NET 4.5+ is required for this."
 }
+
