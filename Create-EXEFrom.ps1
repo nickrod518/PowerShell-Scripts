@@ -1,4 +1,4 @@
-﻿# Requires PowerShell 3.0+ and iexpress (included with Windows)
+﻿#Requires -Version 3.0
 
 <#
 .SYNOPSIS
@@ -32,6 +32,8 @@
 
 .NOTES
     Created by Nick Rodriguez
+
+    Requires iexpress, which is included in most versions of Windows (https://en.wikipedia.org/wiki/IExpress).
 
     Version 1.0 - 2/26/16
 
