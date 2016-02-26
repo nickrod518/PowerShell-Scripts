@@ -5,6 +5,8 @@
     Convert a PowerShell script into a deployable exe using iexpress.
 
 .DESCRIPTION
+    Takes one PowerShell script and any number of supplementary files and create an exe using Windows's built in iexpress program.
+    Verbose output is available for most of the processes in this script if you call it using the -Verbose parameter.
 
 .PARAMETER PSScriptPath (Optional)
     Path string to PowerShell script that you want to use as the first thing iexpress calls when the exe is run.
@@ -26,7 +28,9 @@
     # Prompts the user to select the PowerShell script and supplemental files using an Open File Dialog.
 
 .NOTES
-    Verbose output is available for most of the processes in this script if you call it using the -Verbose parameter
+    Created by Nick Rodriguez
+
+    Version 1.0 - 2/26/16
 
 #>
 
