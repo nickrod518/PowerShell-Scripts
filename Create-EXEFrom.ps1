@@ -1,4 +1,4 @@
-﻿# Requires PowerShell 3.0+
+﻿# Requires PowerShell 3.0+ and iexpress (included with Windows)
 
 <#
 .SYNOPSIS
@@ -14,6 +14,9 @@
 
 .PARAMETER SupplementalFilePaths (Optional)
     Array of comma separated supplemental file paths that you want to include as resources.
+
+.PARAMETER SelectSupplementalFiles (Optional)
+    Use this flag to be prompted to select the supplementary files in an Open File Dialog.
 
 .OUTPUTS
     An exe file is created in the same directory you run the script from
