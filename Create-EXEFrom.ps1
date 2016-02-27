@@ -35,6 +35,12 @@
 
     Requires iexpress, which is included in most versions of Windows (https://en.wikipedia.org/wiki/IExpress).
 
+    Version 1.1 - 2/27/16
+        -Removed $PSScriptRoot references in process block, which were causing errors when run from ISE.
+        -New target exe destination is directory of target ps1.
+        -Changed location of temp directory to root of C: to prevent issues with path names containing spaces.
+        -Changed method of getting target name from trimming to replacing to prevent cutting off chars of file name.
+
     Version 1.0 - 2/26/16
 
 #>
@@ -78,6 +84,7 @@ begin {
     
         $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
         $OpenFileDialog.Title = 'Select a file'
+        # PSScriptRoot will be null if run from the ISE or PS Version < 3.0
         $OpenFileDialog.InitialDirectory = $PSScriptRoot
         if ($SupplementalFiles) {
             $OpenFileDialog.filter = "All Files| *.*"
@@ -101,17 +108,21 @@ process {
         $PSScriptName = (Get-Item $PSScriptPath).Name
     } else {
         try {
-            $PSScriptPath = Get-File
-            $PSScriptName = $PSScriptPath.Name
+            $PSScriptPath = (Get-File).FullName
+            $PSScriptName = $PSScriptPath.Split('\')[-1]
         } catch { exit } 
     }
     Write-Verbose "PowerShell script selected: `n$PSScriptPath"
 
-    # Name of the target exe, leave "exe" out, and replace spaces with underscores
-    $target = ($PSScriptName).TrimEnd(".ps1") -replace " ", '_'
+    # Name of the extensionless target, replace spaces with underscores
+    $target = ($PSScriptName -replace '.ps1', '') -replace " ", '_'
     
+    # Get the directory the script was found in
+    $ScriptRoot = $PSScriptPath.Substring(0, $PSScriptPath.LastIndexOf('\'))
+
     # Create temp directory to store all files
-    $Temp = New-Item "$PSScriptRoot\$target$(Get-Date -Format "HHmmss")" -ItemType Directory -Force
+    $Temp = New-Item "C:\$target$(Get-Date -Format "HHmmss")" -ItemType Directory -Force
+    Write-Verbose "Using temp directory $Temp"
 
     # Copy the PowerShell script to our temp directory
     Copy-Item $PSScriptPath $Temp
@@ -139,7 +150,7 @@ process {
         Copy-Item $SupplementalFilePaths $Temp
     }
 
-    $exe = "$PSScriptRoot\$target.exe"
+    $exe = "$ScriptRoot\$target.exe"
     Write-Verbose "Target EXE: $exe"
 
     # create the sed file used by iexpress
