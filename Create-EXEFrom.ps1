@@ -1,6 +1,4 @@
-﻿#Requires -Version 3.0
-
-<#
+﻿<#
 .SYNOPSIS
     Convert a PowerShell script into a deployable exe using iexpress.
 
@@ -52,6 +50,9 @@
     Created by Nick Rodriguez
 
     Requires iexpress, which is included in most versions of Windows (https://en.wikipedia.org/wiki/IExpress).
+    
+    Version 1.3 - 2/29/16
+        -Added PS Version 2.0 support
 
     Version 1.2 - 2/27/16
         -Added parameter for leaving temp directory intact - useful for bug smashing.
@@ -178,6 +179,17 @@ begin {
             $false 
         }
     }
+    
+    function Test-PSVersion {
+        # Return true if PowerShell is at least version 3
+        if ($PSVersionTable.PSVersion.Major -ge 3) {
+            Write-Verbose 'PowerShell is version 3 or greater'
+            $true
+        } else {
+            Write-Verbose 'PowerShell is less than version 3'
+            $false
+        }
+    }
 
     # This zip method is not as reliable, and slower, but we must use it if .NET 4.5+ is not available
     function Zip-FileOld {
@@ -197,16 +209,16 @@ begin {
         # Get the full path of the source zip archive
         $SourceDirectoryFullPath = (Get-Item $SourceDirectoryPath).FullName
         Write-Verbose "Full path of source directory: $SourceDirectoryFullPath"
+        
+        $TargetZipPath = "$DestinationDirectoryPath\$($SourceDirectoryFullPath.Split('\')[-1]).zip"
 
         # Create empty zip file that is not read only
-        Set-Content "$SourceDirectoryFullPath.zip" ([byte[]] @(80, 75, 5, 6 + (,0 * 18))) -Encoding Byte
-        (Get-Item "$SourceDirectoryFullPath.zip").IsReadOnly = $false
-
-        $TargetZipPath = "$DestinationDirectoryPath\$($SourceDirectoryFullPath.Split('\')[-1]).zip"
+        Set-Content $TargetZipPath ([byte[]] @(80, 75, 5, 6 + (,0 * 18))) -Encoding Byte
+        (Get-Item $TargetZipPath).IsReadOnly = $false
 
         $Shell = New-Object -ComObject Shell.Application
         $ZipFile = $Shell.NameSpace($TargetZipPath)
-        Write-Verbose "Zip file location: $($ZipFile.Self.Path)"
+        Write-Verbose "Zip file location: $TargetZipPath"
 
         # User Force parameter to make sure we get hidden items too
         Get-ChildItem $SourceDirectoryFullPath -Force | ForEach-Object {
@@ -337,7 +349,7 @@ process {
             # Prompt user to select supplemental directory
             $SupplementalDirectoryPath = (Get-Directory).FullName
             Write-Verbose "Supplemental directory: $SupplementalDirectoryPath"
-            if (Test-NETVersion) {
+            if ((Test-NETVersion) -and (Test-PSVersion)) {
                 $SupplementalFilePaths = Zip-File -SourceDirectoryPath $SupplementalDirectoryPath -DestinationDirectoryPath $Temp
             } else {
                 $SupplementalFilePaths = Zip-FileOld -SourceDirectoryPath $SupplementalDirectoryPath -DestinationDirectoryPath $Temp
@@ -350,7 +362,7 @@ process {
             # Get the path of the directory the user supplied
             $SupplementalDirectoryPath = (Get-Item $SupplementalDirectoryPath).FullName
             Write-Verbose "Supplemental directory: $SupplementalDirectoryPath"
-            if (Test-NETVersion) {
+            if ((Test-NETVersion) -and (Test-PSVersion)) {
                 $SupplementalFilePaths = Zip-File -SourceDirectoryPath $SupplementalDirectoryPath -DestinationDirectoryPath $Temp
             } else {
                 $SupplementalFilePaths = Zip-FileOld -SourceDirectoryPath $SupplementalDirectoryPath -DestinationDirectoryPath $Temp
@@ -414,8 +426,9 @@ process {
     
     # Add the ps1 and supplemental files
     If ($SupplementalFiles) {
+        $index = $IndexOffset
         ForEach ($file in $SupplementalFiles) {
-            $index = ([array]::IndexOf($SupplementalFiles, $file) + $IndexOffset)
+            $index++
             Add-Content $sed "FILE$index=$file"
         }
     }
@@ -430,8 +443,9 @@ process {
     }
     # Add the ps1 and supplemental files
     If ($SupplementalFiles) {
+        $index = $IndexOffset
         ForEach ($file in $SupplementalFiles) {
-            $index = ([array]::IndexOf($SupplementalFiles, $file) + $IndexOffset)
+            $index++
             Add-Content $sed "%FILE$index%="
         }
     }
