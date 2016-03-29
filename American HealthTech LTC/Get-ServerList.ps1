@@ -3,7 +3,7 @@ Function Get-ServerList {
     Get-PSSnapin citrix* -ErrorAction SilentlyContinue | Out-Null
     $Groups = Get-XAWorkerGroup
     
-    Write-Host "Select a server group to deploy to:`n"
+    Write-Host "Select a server group:`n"
     
     $Menu = @{}
     Write-Host "1. Single Server"
@@ -27,9 +27,9 @@ Function Get-ServerList {
         Exit
     }
     
-    CLS
+    Clear-Host
     if ($Choice -ne 1) {
-        Write-Host "Deploying to $($Menu[$Choice]):"
+        Write-Host "You selected $($Menu[$Choice]):"
         $Group = $Groups | where { $_.WorkerGroupName -eq $Menu[$Choice] }
         $Group.ServerNames | ForEach-Object {
             Write-Host $_
@@ -40,5 +40,4 @@ Function Get-ServerList {
         Write-Host "Deploying to $Server."
         Return $Server
     }   
-    
 }

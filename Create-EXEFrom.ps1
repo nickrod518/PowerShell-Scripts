@@ -29,6 +29,9 @@
 .PARAMETER RemoveTempDir
     Set this to false to keep the temp directory around after the exe is created. It is available at the root of C:.
 
+.PARAMETER x64
+    Use the 64-bit iexpress path so that 64-bit PowerShell is consequently called.
+
 .OUTPUTS
     An exe file in the same directory as the ps1 script you specify
 
@@ -50,6 +53,9 @@
     Created by Nick Rodriguez
 
     Requires iexpress, which is included in most versions of Windows (https://en.wikipedia.org/wiki/IExpress).
+
+    Version 1.4 - 3/29/16
+        -Added x64 switch for creating exe using 64-bit iexpress.
     
     Version 1.3 - 2/29/16
         -Added PS Version 2.0 support
@@ -110,10 +116,21 @@ param (
 
     [Parameter(Mandatory=$false)]
     [bool]
-    $RemoveTempDir = $true
+    $RemoveTempDir = $true,
+
+    [Parameter(Mandatory=$false)]
+    [switch]
+    $x64
 )
 
 begin {
+    # use 32-bit iexpress for wider compatibility unless user specifies otherwise
+    if ($x64) {
+        $IExpress = "C:\WINDOWS\System32\iexpress"
+    } else {
+        $IExpress = "C:\WINDOWS\SysWOW64\iexpress"
+    }
+
     function Get-File {
         [CmdletBinding()]
         [OutputType([psobject[]])]
@@ -374,8 +391,13 @@ process {
 
         }
     }
-
-    $exe = "$ScriptRoot\$target.exe"
+    
+    # If creating 64-bit exe, append to name to clarify
+    if ($x64) {
+        $exe = "$ScriptRoot\$target (x64).exe"
+    } else {
+        $exe = "$ScriptRoot\$target.exe"
+    }
     Write-Verbose "Target EXE: $exe"
 
     # create the sed file used by iexpress
@@ -453,9 +475,7 @@ process {
     Write-Verbose "SED file contents: `n$(Get-Content $sed | Out-String)"
 
     # Call IExpress to create exe from the sed we just created
-    $IExpress = "C:\WINDOWS\SysWOW64\iexpress"
-    $Args = "/N $sed"
-    Start-Process $IExpress $Args -Wait
+    Start-Process $IExpress "/N $sed" -Wait
 
     if ($RemoveTempDir) {
         # Clean up
