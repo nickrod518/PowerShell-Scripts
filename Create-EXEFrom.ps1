@@ -26,8 +26,8 @@
     Use this flag to be prompted to select a directory in an Open File Dialog that will be zipped and added as a supplementary file.
     When the exe is run, this script will first be unzipped and all files are available.
 
-.PARAMETER RemoveTempDir
-    Set this to false to keep the temp directory around after the exe is created. It is available at the root of C:.
+.PARAMETER KeepTempDir
+    Keep the temp directory around after the exe is created. It is available at the root of C:.
 
 .PARAMETER x64
     Use the 64-bit iexpress path so that 64-bit PowerShell is consequently called.
@@ -44,7 +44,7 @@
     # Prompts the user to select the PowerShell script and supplemental files using an Open File Dialog.
 
 .EXAMPLE
-    .\Create-EXEFrom.ps1 -SupplementalDirectoryPath 'C:\Temp\MyTestDir' -RemoveTempDir $false
+    .\Create-EXEFrom.ps1 -SupplementalDirectoryPath 'C:\Temp\MyTestDir' -KeepTempDir
     # Zips MyTestDir and attaches it to the exe. When the exe is run, but before the user's script gets run, 
     # it will be extracted to the same directory as the user's script. Temp directory used during exe creation
     # will be left intact for user inspection or debugging purposes.
@@ -53,6 +53,13 @@
     Created by Nick Rodriguez
 
     Requires iexpress, which is included in most versions of Windows (https://en.wikipedia.org/wiki/IExpress).
+
+    Version 1.6 - 4/25/16
+        -Changed name of RemoveTempDir param to be a switch named KeepTempDir
+        -Added ability to use the exe's root path in your PS script with "Split-Path -Parent $Args[0]"
+
+    Version 1.5 - 4/6/16
+        -Added RunAs flag so iexpress is started as admin
 
     Version 1.4 - 3/29/16
         -Added x64 switch for creating exe using 64-bit iexpress.
@@ -326,13 +333,13 @@ process {
     Write-Verbose "PowerShell script selected: $PSScriptPath"
 
     # Name of the extensionless target, replace spaces with underscores
-    $target = ($PSScriptName -replace '.ps1', '') -replace " ", '_'
+    $Target = ($PSScriptName -replace '.ps1', '') -replace " ", '_'
     
     # Get the directory the script was found in
     $ScriptRoot = $PSScriptPath.Substring(0, $PSScriptPath.LastIndexOf('\'))
 
     # Create temp directory to store all files
-    $Temp = New-Item "C:\$target$(Get-Date -Format "HHmmss")" -ItemType Directory -Force
+    $Temp = New-Item "C:\$Target$(Get-Date -Format "HHmmss")" -ItemType Directory -Force
     Write-Verbose "Using temp directory $Temp"
 
     # Copy the PowerShell script to our temp directory
@@ -394,37 +401,37 @@ process {
     
     # If creating 64-bit exe, append to name to clarify
     if ($x64) {
-        $exe = "$ScriptRoot\$target (x64).exe"
+        $EXE = "$ScriptRoot\$Target (x64).exe"
     } else {
-        $exe = "$ScriptRoot\$target.exe"
+        $EXE = "$ScriptRoot\$Target.exe"
     }
-    Write-Verbose "Target EXE: $exe"
+    Write-Verbose "Target EXE: $EXE"
 
     # create the sed file used by iexpress
-    $sed = "$Temp\$target.sed"
-    New-Item $sed -ItemType File -Force | Out-Null
+    $SED = "$Temp\$Target.sed"
+    New-Item $SED -ItemType File -Force | Out-Null
 
     # populate the sed with config info
-    Add-Content $sed "[Version]"
-    Add-Content $sed "Class=IEXPRESS"
-    Add-Content $sed "sedVersion=3"
-    Add-Content $sed "[Options]"
-    Add-Content $sed "PackagePurpose=InstallApp"
-    Add-Content $sed "ShowInstallProgramWindow=0"
-    Add-Content $sed "HideExtractAnimation=1"
-    Add-Content $sed "UseLongFileName=1"
-    Add-Content $sed "InsideCompressed=0"
-    Add-Content $sed "CAB_FixedSize=0"
-    Add-Content $sed "CAB_ResvCodeSigning=0"
-    Add-Content $sed "RebootMode=N"
-    Add-Content $sed "TargetName=%TargetName%"
-    Add-Content $sed "FriendlyName=%FriendlyName%"
-    Add-Content $sed "AppLaunched=%AppLaunched%"
-    Add-Content $sed "PostInstallCmd=%PostInstallCmd%"
-    Add-Content $sed "SourceFiles=SourceFiles"
-    Add-Content $sed "[Strings]"
-    Add-Content $sed "TargetName=$exe"
-    Add-Content $sed "FriendlyName=$target"
+    Add-Content $SED "[Version]"
+    Add-Content $SED "Class=IEXPRESS"
+    Add-Content $SED "sedVersion=3"
+    Add-Content $SED "[Options]"
+    Add-Content $SED "PackagePurpose=InstallApp"
+    Add-Content $SED "ShowInstallProgramWindow=0"
+    Add-Content $SED "HideExtractAnimation=1"
+    Add-Content $SED "UseLongFileName=1"
+    Add-Content $SED "InsideCompressed=0"
+    Add-Content $SED "CAB_FixedSize=0"
+    Add-Content $SED "CAB_ResvCodeSigning=0"
+    Add-Content $SED "RebootMode=N"
+    Add-Content $SED "TargetName=%TargetName%"
+    Add-Content $SED "FriendlyName=%FriendlyName%"
+    Add-Content $SED "AppLaunched=%AppLaunched%"
+    Add-Content $SED "PostInstallCmd=%PostInstallCmd%"
+    Add-Content $SED "SourceFiles=SourceFiles"
+    Add-Content $SED "[Strings]"
+    Add-Content $SED "TargetName=$EXE"
+    Add-Content $SED "FriendlyName=$Target"
 
     # If we've zipped a file, we need to modify things
     if ('SelectDirectory', 'SpecifyDirectory' -contains $PSCmdlet.ParameterSetName) {
@@ -434,51 +441,49 @@ process {
         Add-Content $UnZipScript $UnZipFunction
         Add-Content $UnZipScript "UnZip-File `'$SupplementalFiles`'"
         # If we're dealing with a zip file, we need to set the primary command to unzip the user's files
-        Add-Content $sed "AppLaunched=cmd /c PowerShell -ExecutionPolicy Bypass -File `"$UnZipScript`""
+        Add-Content $SED "AppLaunched=cmd /c PowerShell -ExecutionPolicy Bypass -File `"$UnZipScript`""
         # After we've staged our files, run the user's script
-        Add-Content $sed "PostInstallCmd=cmd /c PowerShell -ExecutionPolicy Bypass -File `"$PSScriptName`""
-        Add-Content $sed "FILE0=UnZip.ps1"
-        Add-Content $sed "FILE1=$PSScriptName"
+        Add-Content $SED "PostInstallCmd=cmd /c for /f `"skip=1 tokens=1* delims=`" %i in (`'wmic process where `"name=`'$target.exe`'`" get ExecutablePath`') do PowerShell -ExecutionPolicy Bypass -Command Clear-Host; `".\$PSScriptName`" `"%i`" & exit"
+        Add-Content $SED "FILE0=UnZip.ps1"
+        Add-Content $SED "FILE1=$PSScriptName"
     } else {
         $IndexOffset = 1
-        Add-Content $sed "AppLaunched=cmd /c PowerShell -ExecutionPolicy Bypass -File `"$PSScriptName`""
-        Add-Content $sed "PostInstallCmd=<None>"
-        Add-Content $sed "FILE0=$PSScriptName"
+        Add-Content $SED "AppLaunched=cmd /c for /f `"skip=1 tokens=1* delims=`" %i in (`'wmic process where `"name=`'$target.exe`'`" get ExecutablePath`') do PowerShell -ExecutionPolicy Bypass -Command Clear-Host; `".\$PSScriptName`" `"%i`" & exit"
+        Add-Content $SED "PostInstallCmd=<None>"
+        Add-Content $SED "FILE0=$PSScriptName"
     }
     
     # Add the ps1 and supplemental files
     If ($SupplementalFiles) {
-        $index = $IndexOffset
-        ForEach ($file in $SupplementalFiles) {
-            $index++
-            Add-Content $sed "FILE$index=$file"
+        $Index = $IndexOffset
+        ForEach ($File in $SupplementalFiles) {
+            $Index++
+            Add-Content $SED "FILE$Index=$File"
         }
     }
-    Add-Content $sed "[SourceFiles]"
-    Add-Content $sed "SourceFiles0=$Temp"
+    Add-Content $SED "[SourceFiles]"
+    Add-Content $SED "SourceFiles0=$Temp"
     
-    Add-Content $sed "[SourceFiles0]"
-    Add-Content $sed "%FILE0%="
+    Add-Content $SED "[SourceFiles0]"
+    Add-Content $SED "%FILE0%="
     if ('SelectDirectory', 'SpecifyDirectory' -contains $PSCmdlet.ParameterSetName) {
         # We've already specified this file, so leave it blank here
-        Add-Content $sed "%FILE1%="
+        Add-Content $SED "%FILE1%="
     }
     # Add the ps1 and supplemental files
     If ($SupplementalFiles) {
-        $index = $IndexOffset
-        ForEach ($file in $SupplementalFiles) {
-            $index++
-            Add-Content $sed "%FILE$index%="
+        $Index = $IndexOffset
+        ForEach ($File in $SupplementalFiles) {
+            $Index++
+            Add-Content $SED "%FILE$Index%="
         }
     }
 
-    Write-Verbose "SED file contents: `n$(Get-Content $sed | Out-String)"
+    Write-Verbose "SED file contents: `n$(Get-Content $SED | Out-String)"
 
-    # Call IExpress to create exe from the sed we just created
-    Start-Process $IExpress "/N $sed" -Wait
+    # Call IExpress to create exe from the sed we just created (run as admin)
+    Start-Process $IExpress "/N $SED" -Wait -Verb RunAs
 
-    if ($RemoveTempDir) {
-        # Clean up
-        Remove-Item $Temp -Recurse -Force
-    }
+    # Clean up unless user specified not to
+    if (-not $KeepTempDir) { Remove-Item $Temp -Recurse -Force }
 }
