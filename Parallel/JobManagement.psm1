@@ -5,11 +5,12 @@ function Limit-Job {
 
     $Messaged = $false
 
-	while ($JobCount = (Get-Job -State Running | Measure-Object).Count -ge $MaxJobs) {
+    while ((($Jobs = Get-Job -State Running) | Measure-Object).Count -ge $MaxJobs) {
         if (-not $Messaged) {
-            Write-Verbose "Waiting on jobs to complete before starting more (limit is $MaxJobs)..."
+            Write-Verbose "Waiting on jobs to complete before starting more (limit is $MaxJobs): $($Jobs.Name)"
             $Messaged = $true
         }
+
         Start-Sleep -Seconds 1
     }
 }
@@ -38,10 +39,10 @@ function Wait-CompletedJob {
 	param ()
 
     $OldCount = 0
-
-	while ($JobCount = (Get-Job | Measure-Object).Count) {
+    while ($Jobs = Get-Job) {
+        $JobCount = ($Jobs | Measure-Object).Count
         if ($JobCount -ne $OldCount) {
-            Write-Verbose "$JobCount job(s) found running..."
+            Write-Verbose "Waiting on $JobCount job(s) to complete: $($Jobs.Name)"
             $OldCount = $JobCount
         }
 
