@@ -1,4 +1,4 @@
-$PriceData = @{}
+$PriceData = [System.Collections.Specialized.OrderedDictionary]@{}
 
 $Data = (Invoke-RestMethod -Method Get -Uri 'https://api.coindesk.com/v1/bpi/historical/close.json' `
     -ContentType 'application/json').bpi | Out-String
