@@ -1,1 +1,0 @@
-PowerShell -WindowStyle Hidden -NoProfile -File Start-MapDrivesUtility.ps1
