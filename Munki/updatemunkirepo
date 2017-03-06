@@ -1,0 +1,28 @@
+#!/bin/bash
+
+cat <<EOF
+
+**************************
+***** Munki repo-set *****
+**************************
+
+EOF
+
+while true; do
+    echo "Enter the FQDN of a Munki repo server and press [ENTER]: "
+    read REPO
+
+    if curl -s --head http://$REPO/repo | head -n 1 | grep "HTTP/1.[01] [23].."; then
+        echo "$REPO is reachable. Setting Munki repo server to $REPO."
+        defaults write /Library/Preferences/ManagedInstalls.plist SoftwareRepoURL "http://$REPO/repo"
+        break
+    else
+        read -r -p "$REPO is not reachable. Try again? [Y/n] " response
+        if [[ $response =~ ^(no|n)$ ]]; then
+            break
+        fi
+    fi
+done
+
+REPO=$(defaults read /Library/Preferences/ManagedInstalls.plist SoftwareRepoURL)
+echo "Munki SoftwareRepoURL setting is set to $REPO."

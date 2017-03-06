@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Get our log file, or create one
+Log="/Users/Shared/Munki/MunkiRepo.log"
+if [ ! -f $Log ]; then
+    mkdir -p /Users/Shared/Munki/
+    touch $Log
+fi
+
+# Get the active network interface
+ActiveIFace=`route get google.com | awk '/interface/ {print $2}'`
+echo "`date`: The active interface is $ActiveIFace" >> $Log
+
+# Get the current IP address
+CurrentIP=`ifconfig $ActiveIFace | awk '/inet / {print $2}'`
+echo "`date`: Your IP address is $CurrentIP" >> $Log
+
+# Office IP addresses associative array
+Locations=(
+    '10.20.0::munkirepo01'    # Region1
+    '10.40.0::munkirepo02'    # Region2
+    '192.168.1::munkirepo03' # VPN
+)
+
+# Set fallback repo if no matches are found
+Repo='munkirepo01'
+
+# Go through each IP in our locations map to check for matches
+for Location in "${Locations[@]}" ; do
+    # First 3 octets of repo's IP
+    IP=${Location%%::*}
+
+    # Check if current IP contains match
+    if [[ "$CurrentIP" == "$IP"* ]]; then
+        Repo=${Location##*::}
+        break
+    fi
+done
+
+# Update the Munki preferences to match the new repo
+{
+    defaults write /Library/Preferences/ManagedInstalls.plist SoftwareRepoURL "http://$Repo.company.local/repo" && echo "`date`: Repo set to $Repo" >> $Log
+} || {
+    echo "`date`: Error setting repo to $Repo" >> $Log
+}

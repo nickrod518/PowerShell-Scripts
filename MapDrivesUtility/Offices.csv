@@ -1,0 +1,4 @@
+Location,Type,DriveLetter,DrivePath
+<Remove All>,Local,,Do not remove!
+"City1, USA",Local,F,\\city1server01\Netvol1
+"City2, USA",Local,G,\\city2server01\Netvol1

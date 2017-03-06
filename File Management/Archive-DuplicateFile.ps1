@@ -31,46 +31,68 @@ function Archive-DuplicateFile {
 
 		    Write-Verbose "Getting all files within [$Dir]..."
             Get-ChildItem -Path $Dir -File -Recurse -Exclude $DupeDir -Force -ErrorAction Continue | Where-Object {
+                # Don't search for duplicates within the directory we're archiving to
                 $_.FullName -notlike "$DupeDir\*"
             } | ForEach-Object {
+                Write-Host $_.FullName
+
                 # Check if the file name exists in our list
                 if ($AllItems.ContainsKey($_.Name)) {
+
+                    # Create an object with details about the item we're about to archive
                     $ArchiveFile = New-Object -TypeName psobject -Property @{
                         Name = $_.Name
-                        Path = $_.FullName
+                        OriginalPath = $_.FullName
+                        ArchivePath = ''
                         LastWriteTime = $_.LastWriteTime
+                        Error = ''
                     }
                 
-                    $CurrLastWriteTime = $AllItems.($_.Name)[0]
-                    $CurrFullName = $AllItems.($_.Name)[1]
+                    $PreviousLastWriteTime = $AllItems.($ArchiveFile.Name)[0]
+                    $PreviousFullName = $AllItems.($ArchiveFile.Name)[1]
 
                     # If this file is newer than what was previously found, archive old and add this to list
-                    if ($_.LastWriteTime -gt $CurrLastWriteTime) {
-                        Write-Verbose "[$($_.Name)] found in list already, this one is newer, archiving older copy..."
+                    if ($ArchiveFile.LastWriteTime -gt $PreviousLastWriteTime) {
+                        Write-Verbose "[$($ArchiveFile.Name)] found already, this one is newer, archiving [$PreviousFullName]..."
 
-                        If ($PSCmdlet.ShouldProcess($CurrFullName, 'Archive Item')) {
-                            # Archive the old item and log it
-                            $ArchiveFile.LastWriteTime = $CurrLastWriteTime
-                            $ArchiveFile.Path = $CurrFullName
-                            $ArchiveFile | Export-Csv -Path $Log -Append -NoTypeInformation
-                            Move-Item -Path $CurrFullName -Destination $DupeDir
+                        if ($PSCmdlet.ShouldProcess($PreviousFullName, 'Archive Item')) {
+                            # Archive the old item and add the new item to the list
+                            $ArchiveFile.ArchivePath = $PreviousFullName.Replace($Dir, $DupeDir)
+                            try {
+                                New-Item -Path $ArchiveFile.ArchivePath.TrimEnd($_.Name) -ItemType Directory -Force
+                                Move-Item -Path $PreviousFullName -Destination $ArchiveFile.ArchivePath -Force
+                            } catch {
+                                $ArchiveFile.Error = $_.Exception.Message
+                            }
+                            $ArchiveFile.LastWriteTime = $PreviousLastWriteTime
+                            $ArchiveFile.OriginalPath = $PreviousFullName
+
+                            # Update what we have in our list
+                            $AllItems.($ArchiveFile.Name)[0] = $PreviousLastWriteTime
+                            $AllItems.($ArchiveFile.Name)[1] = $PreviousFullName
                         }
-
-                        # Add our new item to the list
-                        $CurrLastWriteTime = $_.LastWriteTime
-                        $CurrFullName = $_.FullName
 
                     # If this file is older than what was previously found, archive it
                     } else {
-                        Write-Verbose "[$($_.Name)] found in list already, this one has older date, archiving..."
-                        If ($PSCmdlet.ShouldProcess($_.FullName, 'Archive Item')) {
-                            # Archive this item and log it
-                            $ArchiveFile | Export-Csv -Path $Log -Append -NoTypeInformation
-                            Move-Item -Path $_.FullName -Destination $DupeDir
+                        Write-Verbose "[$($ArchiveFile.Name)] found already, this one is older, archiving [$($_.FullName)]..."
+                        
+                        if ($PSCmdlet.ShouldProcess($_.FullName, 'Archive Item')) {
+                            # Archive this item
+                            $ArchiveFile.ArchivePath = $_.FullName.Replace($Dir, $DupeDir)
+                            try {
+                                New-Item -Path $ArchiveFile.ArchivePath.TrimEnd($_.Name) -ItemType Directory -Force
+                                Move-Item -Path $_.FullName -Destination $ArchiveFile.ArchivePath -Force
+                            } catch {
+                                $ArchiveFile.Error = $_.Exception.Message
+                            }
                         }
                     }
+
+                    # Log it
+                    $ArchiveFile | Export-Csv -Path $Log -Append -NoTypeInformation
+
                 } else {
-                    Write-Verbose "Adding [$($_.Name)] to list..."
+                    # Item is unique so add it to the list
                     $AllItems.Add($_.Name, @($_.LastWriteTime, $_.FullName))
                 }
             }
