@@ -38,7 +38,7 @@ param(
 
 begin {
     Write-Verbose "Gathering files within $DocsPath..."
-    $Docs = Get-ChildItem -Path $DocsPath
+    $Docs = Get-ChildItem -Path $DocsPath -File
     $DocsCount = $Docs.Count
     Write-Verbose "$DocsCount files found."
 
