@@ -15,4 +15,4 @@ Get-MsolUser -EnabledFilter EnabledOnly -All | ForEach-Object {
         MethodType3 = $AuthMethods[2].MethodType
         MethodType4 = $AuthMethods[3].MethodType
     }
-} | Export-Csv -Path ~\Downloads\MfaUsers.csv -NoTypeInformation
+}
