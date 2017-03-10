@@ -1,0 +1,1 @@
+﻿Get-ADComputer -Filter * | Invoke-Command -ScriptBlock { tzutil /s "Eastern Standard Time" }
