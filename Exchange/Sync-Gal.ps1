@@ -41,7 +41,7 @@ Import-PSSession $SecondaryTenantEOSession
 # Create/Update contact for each Gal entry
 $Gal | ForEach-Object {
     # Create a new contact if one doesn't exist
-    if (Get-MailContact -Identity $_.Name -ErrorAction SilentlyContinue) {
+    if (Get-MailContact -Identity $_.Name) {
         Write-Host "Contact $($_.Name) already exists."
     } else {
         try {
@@ -89,7 +89,7 @@ $Gal | ForEach-Object {
         | Out-Null
             
         # Update Windows Email Address only if it's populated
-        if ($_.WindowsLiveID -ne $null) { Set-MailContact -WindowsEmailAddress $_.WindowsLiveID | Out-Null }
+        if ($_.WindowsLiveID -ne '') { Set-MailContact -Identity $_.Name -WindowsEmailAddress $_.WindowsLiveID | Out-Null }
     } catch {
         Write-Host "Error updating mail contact info for $($_.Name): $_"
     }
