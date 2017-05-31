@@ -510,25 +510,40 @@ function Get-ZoomGroupMember {
     $Users
 }
 
-function Set-ZoomUserLicense {
+function Set-ZoomUserInfo {
     <#
     .SYNOPSIS
-    Set license for Zoom user.
+    Set personal meeting Id and vanity name for Zoom user.
 
     .PARAMETER Id
-    Zoom user to set license for.
+    Zoom user to update.
+
+    .PARAMETER FirstName
+    User's first name.
+
+    .PARAMETER LastName
+    User's last name.
 
     .PARAMETER License
     License type. Basic, Pro, or Corp.
 
+    .PARAMETER Pmi
+    Personal Meeting ID, long, length must be 10.
+
+    .PARAMETER EnablePmi
+    Specify whether to use Personal Meeting Id for instant meetings. True or False.
+
+    .PARAMETER VanityName
+    Personal meeting room name.
+
     .EXAMPLE
-    Get-ZoomUser -Id user@company.com | Set-ZoomUserLicense -License Corp
+    Get-ZoomUser -Id user@company.com | Set-ZoomUserInfo -License Corp
     Sets Zoom license to Corp on user@company.com's account.
 
     .OUTPUTS
     PSCustomObject
     #>
-    [CmdletBinding(DefaultParameterSetName = 'All')]
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -536,25 +551,49 @@ function Set-ZoomUserLicense {
 			ValueFromPipelineByPropertyName = $true
 		)]
         [ValidateNotNullOrEmpty()]
-        [string[]]$Id,
+        [string]$Id,
 
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
+        [string]$FirstName,
+
+        [Parameter(Mandatory = $false)]
+        [string]$LastName,
+
+        [Parameter(Mandatory = $false)]
         [ValidateSet('Basic', 'Pro', 'Corp')]
-        [string]$License
+        [string]$License,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1000000000, 9999999999)]
+        [long]$Pmi,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$EnablePmi,
+
+        [Parameter(Mandatory = $false)]
+        [string]$VanityName
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/update'
 
-    $Type = switch ($License) {
-        'Basic' { 1 }
-        'Pro' { 2 }
-        'Corp' { 3 }
-    }
+    if ($pscmdlet.ShouldProcess($Id, 'Update Zoom user info')) {
 
-    foreach ($User in $Id) {
         $Headers = Get-ZoomAuthHeader
-        $Headers.Add('id', $User)
-        $Headers.Add('type', $Type)
+        $Headers.Add('id', $Id)
+        if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
+        if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
+        if ($PSBoundParameters.ContainsKey('License')) {
+            $Type = switch ($License) {
+                'Basic' { 1 }
+                'Pro' { 2 }
+                'Corp' { 3 }
+            }
+            
+            $Headers.Add('type', $Type)
+        }
+        if ($PSBoundParameters.ContainsKey('Pmi')) { $Headers.Add('pmi', $Pmi) }
+        if ($PSBoundParameters.ContainsKey('EnablePmi')) { $Headers.Add('enable_use_pmi', $EnablePmi) }
+        if ($PSBoundParameters.ContainsKey('VanityName')) { $Headers.Add('vanity_name', $VanityName) }
 
         Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
     }
