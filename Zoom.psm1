@@ -8,6 +8,16 @@ try {
 }
 
 function Get-ZoomAuthHeader {
+    <#
+    .SYNOPSIS
+    Gets a hashtable for a new REST body that includes the api key and secret.
+
+    .EXAMPLE
+    $Headers = Get-ZoomAuthHeader
+
+    .OUTPUTS
+    Hashtable
+    #>
     [CmdletBinding()]
     Param()
 
@@ -18,6 +28,13 @@ function Get-ZoomAuthHeader {
 }
 
 function Read-ZoomResponse {
+    <#
+    .SYNOPSIS
+    Parses Zoom REST response so errors are returned properly
+
+    .EXAMPLE
+    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    #>
     [CmdletBinding()]
     Param(
         [Parameter(
@@ -35,21 +52,43 @@ function Read-ZoomResponse {
 }
 
 function Get-ZoomUser {
+    <#
+    .SYNOPSIS
+    Gets Zoom users by Id, Email, or All.
+
+    .PARAMETER Id
+    Gets Zoom user by their Zoom Id. Will accept an array of Id's.
+
+    .PARAMETER Email
+    Gets all Zoom users and then filters by email. Will accept an array of emails.
+
+    .PARAMETER All
+    Default. Return all Zoom users.
+
+    .EXAMPLE
+    Get-ZoomUser
+    Returns all zoom users.
+
+    .EXAMPLE
+    Get-ZoomUser -Email user@company.com
+    Searches for and returns specified user if found.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding(DefaultParameterSetName = 'All')]
     Param(
         [Parameter(ParameterSetName = 'Id')]
         [ValidateNotNullOrEmpty()]
-        [string]$Id,
+        [string[]]$Id,
 
         [Parameter(ParameterSetName = 'Email')]
         [ValidateNotNullOrEmpty()]
-        [string]$Email,
+        [string[]]$Email,
 
         [Parameter(ParameterSetName = 'All')]
         [switch]$All
     )
-
-    $Headers = Get-ZoomAuthHeader
 
     $Endpoint = if ($PSCmdlet.ParameterSetName -ne 'Id') {
         'https://api.zoom.us/v1/user/list'
@@ -58,29 +97,52 @@ function Get-ZoomUser {
     }
 
     if ($PSCmdlet.ParameterSetName -ne 'Id') {
+        $Headers = Get-ZoomAuthHeader
         $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
 
         Write-Verbose "There are $($Result.page_count) pages of users"
         foreach ($Page in $Result.page_count) {
-            $Headers = Get-ZoomAuthHeader
             $Headers.Add('page_size', 300)
             $Headers.Add('page_number', $Page)
             $Users += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).users
         }
 
         if ($PSCmdlet.ParameterSetName -eq 'Email') {
-            $Users | Where-Object -Property email -eq $Email
+            foreach ($User in $Email) {
+                $Users | Where-Object -Property email -eq $User
+            }
         } else {
             $Users
         }
     } else {
-        $Headers.Add('id', $Id)
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        foreach ($User in $Id) {
+            $Headers = Get-ZoomAuthHeader
+            $Headers.Add('id', $User)
+            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        }
     }
 }
 
 function Remove-ZoomUser {
-    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+    Remove Zoom user by Id.
+
+    .PARAMETER Id
+    Zoom user Id to remove.
+
+    .PARAMETER Permanently
+    Default is no. Switch that specified whether to delete user permanently.
+
+    .EXAMPLE
+    Get-ZoomUser -Email user@company.com -Permanently | Remove-ZoomUser
+    Permanently remove user@company.com.
+
+    .EXAMPLE
+    Remove-ZoomUser -Id 123asdfjkl
+    Removes Zoom user with Id 123asdfjkl.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -94,6 +156,7 @@ function Remove-ZoomUser {
     )
 
     $Endpoint = if ($Permanently) {
+        Write-Verbose 'Permanent delete selected.'
         'https://api.zoom.us/v1/user/permanentdelete'
     } else {
         'https://api.zoom.us/v1/user/delete'
@@ -102,11 +165,24 @@ function Remove-ZoomUser {
     $Headers = Get-ZoomAuthHeader
     $Headers.Add('id', $Id)
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    if ($pscmdlet.ShouldProcess($Id, 'Remove Zoom user')) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    }
 }
 
 function Remove-ZoomGroup {
-    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+    Remove Zoom group by Id.
+
+    .PARAMETER Id
+    Zoom group Id to remove.
+
+    .EXAMPLE
+    Get-ZoomGroup -Name TestGroup | Remove-ZoomGroup
+    Remove group TestGroup.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -122,10 +198,23 @@ function Remove-ZoomGroup {
     $Headers = Get-ZoomAuthHeader
     $Headers.Add('id', $Id)
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    if ($pscmdlet.ShouldProcess($Id, 'Remove Zoom group')) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    }
 }
 
 function Test-ZoomUserEmail {
+    <#
+    .SYNOPSIS
+    Test if given email has an existing account.
+
+    .PARAMETER Email
+    Zoom user email to test.
+
+    .EXAMPLE
+    Test-ZoomUserEmail -Email user@company.com
+    Checks to see if account exists for user@company.com.
+    #>
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory = $true)]
@@ -142,7 +231,18 @@ function Test-ZoomUserEmail {
 }
 
 function Disable-ZoomUser {
-    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+    Deactivate Zoom user with given Id.
+
+    .PARAMETER Id
+    Zoom user id to deactivate.
+
+    .EXAMPLE
+    Get-ZoomUser -Id user@company.com | Disable-ZoomUserEmail
+    Deactivates Zoom user account with email user@company.com.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -159,10 +259,36 @@ function Disable-ZoomUser {
 
     $Headers.Add('id', $Id)
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    if ($pscmdlet.ShouldProcess($Id, 'Deactivate Zoom user')) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    }
 }
 
 function Get-ZoomGroup {
+    <#
+    .SYNOPSIS
+    Gets Zoom groups by Id, Name, or All.
+
+    .PARAMETER Id
+    Gets Zoom group by their Zoom Id.
+
+    .PARAMETER Name
+    Gets all Zoom groups and then filters by name.
+
+    .PARAMETER All
+    Default. Return all Zoom groups.
+
+    .EXAMPLE
+    Get-ZoomGroup
+    Returns all zoom groups.
+
+    .EXAMPLE
+    Get-ZoomGroup -Name TestGroup
+    Searches for and returns specified group if found.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding(DefaultParameterSetName = 'All')]
     Param(
         [Parameter(
@@ -241,7 +367,10 @@ function Set-ZoomUserAssistant {
 }
 
 function Remove-ZoomUserAssistant {
-    [CmdletBinding(DefaultParameterSetName = 'Id')]
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        DefaultParameterSetName = 'Id'
+    )]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -262,12 +391,16 @@ function Remove-ZoomUserAssistant {
     $Endpoint = 'https://api.zoom.us/v1/user/assistant/delete'
 
     if ($PSCmdlet.ParameterSetName -ne 'Id') {
+        $Assistant = $Id
         $Headers.Add('id', $Id)
     } else {
+        $Assistant = $Email
         $Headers.Add('host_email', $Email)
     }
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    if ($pscmdlet.ShouldProcess($Assistant, 'Remove Zoom user assistant')) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    }
 }
 
 function New-ZoomGroup {
@@ -310,13 +443,13 @@ function Add-ZoomGroupMember {
     foreach ($User in $Id) {
         $MemberIds += "$User,"
     }
-    $Headers.Add('member_ids', $MemberIds)
+    $Headers.Add('member_ids', $MemberIds.TrimEnd(','))
 
     Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
 }
 
 function Remove-ZoomGroupMember {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
@@ -341,7 +474,9 @@ function Remove-ZoomGroupMember {
     }
     $Headers.Add('member_ids', $MemberIds)
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    if ($pscmdlet.ShouldProcess($MemberIds, "Remove Zoom user from $GroupId")) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    }
 }
 
 function Get-ZoomGroupMember {
@@ -376,6 +511,23 @@ function Get-ZoomGroupMember {
 }
 
 function Set-ZoomUserLicense {
+    <#
+    .SYNOPSIS
+    Set license for Zoom user.
+
+    .PARAMETER Id
+    Zoom user to set license for.
+
+    .PARAMETER License
+    License type. Basic, Pro, or Corp.
+
+    .EXAMPLE
+    Get-ZoomUser -Id user@company.com | Set-ZoomUserLicense -License Corp
+    Sets Zoom license to Corp on user@company.com's account.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding(DefaultParameterSetName = 'All')]
     Param(
         [Parameter(
@@ -409,6 +561,26 @@ function Set-ZoomUserLicense {
 }
 
 function Set-ZoomUserPicture {
+    <#
+    .SYNOPSIS
+    Upload a new profile picture for the specified Zoom user.
+
+    .PARAMETER Id
+    Zoom user to upload a new profile picture for.
+
+    .PARAMETER Path
+    Path to profile picture to upload.
+
+    .EXAMPLE
+    Get-ZoomUser -Id user@company.com | Set-ZoomUserPicture -Path .\picture.jpg
+    Uploads new profile picture to user@company.com's account.
+
+    .OUTPUTS
+    PSCustomObject
+
+    .NOTES
+    This function does not work in its current state.
+    #>
     [CmdletBinding()]
     Param(
         [Parameter(
@@ -433,41 +605,58 @@ function Set-ZoomUserPicture {
     $Encoding = [System.Text.Encoding]::ASCII
     $FileContent = $Encoding.GetString($Bytes)
 
+    <#$boundary = [System.Guid]::NewGuid().ToString()
+    $LF = "`n"
+    $bodyLines = (
+        "--$boundary",
+        "api_key: Uo4sjR8IQcOBWCUqxFlM_g",
+        "--$boundary",
+        "api_secret: 0PxInW592LrbpM0wxoDd3NesO5VbU7OKm8lT",
+        "--$boundary",
+        "id: $Id",
+        "--$boundary",
+        "Content-Disposition: form-data; name=`"pic_file`"$LF",
+        $FileContent,
+        "--$boundary--$LF"
+        ) -join $LF
+    $bodyLines = (
+        "api_key: Uo4sjR8IQcOBWCUqxFlM_g",
+        "api_secret: 0PxInW592LrbpM0wxoDd3NesO5VbU7OKm8lT",
+        "id: $Id",
+        "--$boundary",
+        "Content-Disposition: form-data; name=`"pic_file`"$LF",
+        $FileContent,
+        "--$boundary--$LF"
+        ) -join $LF#>
+
     $Headers = Get-ZoomAuthHeader
     $Headers.Add('id', $Id)
     $Headers.Add('pic_file', $FileContent)
 
+
+
+    #Invoke-WebRequest -Headers $Headers -Method Post -Uri $Endpoint -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $bodyLines
     Invoke-RestMethod -Uri $Endpoint -Method Post -Body $Headers -ContentType 'multipart/form-data'
 }
 
-function Set-ZoomUserIntern {
-    [CmdletBinding()]
-    Param(
-        [Parameter(
-            Mandatory = $true,
-			ValueFromPipeline = $true,
-			ValueFromPipelineByPropertyName = $true
-		)]
-        [ValidateNotNullOrEmpty()]
-        [string[]]$Id
-    )
-
-    foreach ($UserId in $Id) {
-        Set-ZoomUserLicense -Id $UserId -License Basic
-
-        $Groups = Get-ZoomGroup
-        $InternGroupId = ($Groups | Where-Object -Property name -eq 'Interns/Temps').group_id
-        $OtherGroupIds = ($Groups | Where-Object -Property name -ne 'Interns/Temps').group_id
-
-        $OtherGroupIds | ForEach-Object {
-            Remove-ZoomGroupMember -GroupId $_ -Id $UserId
-        }
-
-        $UserId | Add-ZoomGroupMember -GroupId $InternGroupId
-    }
-}
-
 function New-ZoomSSOUser {
+    <#
+    .SYNOPSIS
+    Pre-provision Zoom SSO user account.
+
+    .PARAMETER Email
+    New Zoom user email address.
+
+    .PARAMETER License
+    License to grant new Zoom user. Basic, Pro, or Corp.
+
+    .EXAMPLE
+    New-ZoomSSOUser -Email user@company.com -License Pro
+    Pre-provisions a Zoom user account for email user@company.com with a Pro license.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding()]
     Param(
         [Parameter(
