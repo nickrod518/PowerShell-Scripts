@@ -1,19 +1,10 @@
-# Verify we can get the api key and secret before loading the module
-try {
-    $ApiKey = Get-Content -Path "$PSScriptRoot\api_key" -ErrorAction Stop
-    $ApiSecret = Get-Content -Path "$PSScriptRoot\api_secret" -ErrorAction Stop
-} catch {
-    Write-Error "There was a problem getting the API key and secret. $_"
-    exit
-}
-
-function Get-ZoomAuthHeader {
+function Get-ZoomApiAuth {
     <#
     .SYNOPSIS
-    Gets a hashtable for a new REST body that includes the api key and secret.
+    Gets a hashtable for a Zoom Api REST body that includes the api key and secret.
 
     .EXAMPLE
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
 
     .OUTPUTS
     Hashtable
@@ -22,9 +13,60 @@ function Get-ZoomAuthHeader {
     Param()
 
     @{
-        'api_key' = $ApiKey
-        'api_secret' = $ApiSecret
+        'api_key' = Get-Content -Path "$PSScriptRoot\api_key"
+        'api_secret' = Get-Content -Path "$PSScriptRoot\api_secret"
     }
+}
+
+function Set-ZoomApiAuth {
+    <#
+    .SYNOPSIS
+    Set the Zoom Api key/secret to the files in the same directory as the module.
+
+    .PARAMETER Key
+    Optional, sets a new Api key.
+    
+    .PARAMETER Secret
+    Optional, sets a new Api secret.
+
+    .EXAMPLE
+    Set-ZoomApi -Key 'mysupersecretapikey' -Secret 'mysupersecretapisecret
+    Sets your Zoom api key and secret to the files in the module directory.
+
+    .EXAMPLE
+    Set-ZoomApi
+    User is prompted to enter both key and secret.
+
+    .OUTPUTS
+    Creates/overrides api_key and api_secret files in module directory.
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Key,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Secret
+    )
+
+    if ($PSBoundParameters.Keys.Count -eq 0) {
+        Read-Host 'Enter your Zoom Api key' | Set-Content -Path "$PSScriptRoot\api_key"
+        Read-Host 'Enter your Zoom Api secret' | Set-Content -Path "$PSScriptRoot\api_secret"
+    } else {
+        switch ($PSBoundParameters.Keys) {
+            'Key' { $Key | Set-Content -Path "$PSScriptRoot\api_key" }
+            'Secret' { $Secret | Set-Content -Path "$PSScriptRoot\api_secret" }
+        }
+    }
+}
+
+# Verify we can get the api key and secret before continuing to load the module
+try {
+    Get-ZoomApiAuth -ErrorAction Stop
+} catch {
+    Set-ZoomApiAuth
 }
 
 function Read-ZoomResponse {
@@ -61,6 +103,9 @@ function Get-ZoomUser {
 
     .PARAMETER Email
     Gets all Zoom users and then filters by email. Will accept an array of emails.
+    
+    .PARAMETER LoginType
+    Optional, default is Sso. Login type of the email.
 
     .PARAMETER All
     Default. Return all Zoom users.
@@ -78,49 +123,107 @@ function Get-ZoomUser {
     #>
     [CmdletBinding(DefaultParameterSetName = 'All')]
     Param(
-        [Parameter(ParameterSetName = 'Id')]
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = 'Id'
+        )]
         [ValidateNotNullOrEmpty()]
         [string[]]$Id,
 
-        [Parameter(ParameterSetName = 'Email')]
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = 'Email'
+        )]
         [ValidateNotNullOrEmpty()]
         [string[]]$Email,
 
-        [Parameter(ParameterSetName = 'All')]
+        [Parameter(
+            Mandatory = $false,
+            ParameterSetName = 'Email'
+        )]
+        [ValidateSet('Facebook', 'Google', 'Api', 'Zoom', 'Sso')]
+        [string]$LoginType = 'Sso',
+
+        [Parameter(
+            Mandatory = $false,
+            ParameterSetName = 'All'
+        )]
         [switch]$All
     )
 
-    $Endpoint = if ($PSCmdlet.ParameterSetName -ne 'Id') {
-        'https://api.zoom.us/v1/user/list'
-    } else {
-        'https://api.zoom.us/v1/user/get'
-    }
+    if ($PSCmdlet.ParameterSetName -eq 'All') {
+        $Endpoint = 'https://api.zoom.us/v1/user/list'
 
-    if ($PSCmdlet.ParameterSetName -ne 'Id') {
-        $Headers = Get-ZoomAuthHeader
+        $Headers = Get-ZoomApiAuth
+        $Headers.Add('page_size', 300)
+
         $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
 
         Write-Verbose "There are $($Result.page_count) pages of users"
-        foreach ($Page in $Result.page_count) {
+        for ($Page = 1; $Page -le $Result.page_count; $Page++) {
+            $Headers = Get-ZoomApiAuth
             $Headers.Add('page_size', 300)
             $Headers.Add('page_number', $Page)
-            $Users += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).users
+            (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).users
+        }
+    } elseif ($PSCmdlet.ParameterSetName -eq 'Email') {
+        $Endpoint = 'https://api.zoom.us/v1/user/getbyemail'
+
+        $Type = switch ($LoginType) {
+            'Facebook' { '0' }
+            'Google' { '1' }
+            'Api' { '99' }
+            'Zoom' { '100' }
+            'Sso' { '101' }
         }
 
-        if ($PSCmdlet.ParameterSetName -eq 'Email') {
-            foreach ($User in $Email) {
-                $Users | Where-Object -Property email -eq $User
-            }
-        } else {
-            $Users
+        foreach ($User in $Email) {
+            $Headers = Get-ZoomApiAuth
+            $Headers.Add('email', $User)
+            $Headers.Add('login_type', $Type)
+            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
         }
-    } else {
+    } elseif ($PSCmdlet.ParameterSetName -eq 'Id') {
+        $Endpoint = 'https://api.zoom.us/v1/user/get'
+
         foreach ($User in $Id) {
-            $Headers = Get-ZoomAuthHeader
+            $Headers = Get-ZoomApiAuth
             $Headers.Add('id', $User)
             Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
         }
     }
+}
+
+function Get-ZoomPendingUser {
+    <#
+    .SYNOPSIS
+    List all the pending users on Zoom.
+
+    .EXAMPLE
+    Get-ZoomPendingUser
+    Returns all pending Zoom users.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'All')]
+    Param()
+
+    $Endpoint = 'https://api.zoom.us/v1/user/pending'
+
+    $Headers = Get-ZoomApiAuth
+    $Headers.Add('page_size', 300)
+    $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+
+    Write-Verbose "There are $($Result.page_count) pages of pending users"
+    for ($Page = 1; $Page -le $Result.page_count; $Page++) {
+        $Headers = Get-ZoomApiAuth
+        $Headers.Add('page_size', 300)
+        $Headers.Add('page_number', $Page)
+        $Users += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).users
+    }
+
+    $Users
 }
 
 function Remove-ZoomUser {
@@ -162,7 +265,7 @@ function Remove-ZoomUser {
         'https://api.zoom.us/v1/user/delete'
     }
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('id', $Id)
 
     if ($pscmdlet.ShouldProcess($Id, 'Remove Zoom user')) {
@@ -195,7 +298,7 @@ function Remove-ZoomGroup {
 
     $Endpoint = 'https://api.zoom.us/v1/group/delete'
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('id', $Id)
 
     if ($pscmdlet.ShouldProcess($Id, 'Remove Zoom group')) {
@@ -224,10 +327,10 @@ function Test-ZoomUserEmail {
 
     $Endpoint = 'https://api.zoom.us/v1/user/checkemail'
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('email', $Email)
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).existed_email
 }
 
 function Disable-ZoomUser {
@@ -253,7 +356,7 @@ function Disable-ZoomUser {
         [string]$Id
     )
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
 
     $Endpoint = 'https://api.zoom.us/v1/user/deactivate'
 
@@ -308,7 +411,7 @@ function Get-ZoomGroup {
         [switch]$All
     )
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
 
     $Endpoint = if ($PSCmdlet.ParameterSetName -ne 'Id') {
         'https://api.zoom.us/v1/group/list'
@@ -330,7 +433,123 @@ function Get-ZoomGroup {
     }
 }
 
+function Get-ZoomMeeting {
+    <#
+    .SYNOPSIS
+    List all the scheduled meetings on Zoom for the user Id.
+
+    .PARAMETER Id
+    Gets Zoom group by their Zoom Id.
+
+    .EXAMPLE
+    Get-ZoomGroup -Name TestGroup
+    Searches for and returns specified group if found.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(
+            Mandatory = $true,
+			ValueFromPipeline = $true,
+			ValueFromPipelineByPropertyName = $true
+		)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$Id
+    )
+
+    $Headers = Get-ZoomApiAuth
+
+    $Endpoint = 'https://api.zoom.us/v1/meeting/list'
+
+    foreach ($User in $Id) {
+        $Headers = Get-ZoomApiAuth
+        $Headers.Add('page_size', 300)
+        $Headers.Add('host_id', $User)
+        $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+
+        Write-Verbose "There are $($Result.page_count) pages of meetings"
+        for ($Page = 1; $Page -le $Result.page_count; $Page++) {
+            $Headers = Get-ZoomApiAuth
+            $Headers.Add('host_id', $User)
+            $Headers.Add('page_size', 300)
+            $Headers.Add('page_number', $Page)
+            $Meetings += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).meetings
+        }
+        
+        $Meetings
+    }
+}
+
+function Get-ZoomUserScheduler {
+    <#
+    .SYNOPSIS
+    List assigned schedule privilege for host users.
+
+    .PARAMETER Id
+    The host's user id.
+
+    .PARAMETER Email
+    The host's email address.
+
+    .EXAMPLE
+    Get-ZoomUser -Email user@company.com | Get-ZoomUserScheduler
+    Returns all zoom groups.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'All')]
+    Param(
+        [Parameter(
+            Mandatory = $true,
+			ValueFromPipeline = $true,
+			ValueFromPipelineByPropertyName = $true,
+            ParameterSetName = 'Id'
+		)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Id,
+
+        [Parameter(ParameterSetName = 'Email')]
+        [ValidateNotNullOrEmpty()]
+        [string]$Email
+    )
+
+    $Headers = Get-ZoomApiAuth
+
+    $Endpoint = 'https://api.zoom.us/v1/user/scheduleforhost/list'
+
+    if ($PSCmdlet.ParameterSetName -eq 'Id') {
+        $Headers.Add('id', $Id)
+    } else {
+        $Headers.Add('host_email', $Email)
+    }
+
+    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+}
+
 function Set-ZoomUserAssistant {
+    <#
+    .SYNOPSIS
+    Set a user's assistant which can schedule meeting for them.
+
+    .PARAMETER Id
+    The host's user id.
+
+    .PARAMETER Email
+    The host's email address.
+
+    .PARAMETER AssistantEmail
+    The assistant's email address.
+
+    .EXAMPLE
+    Get-ZoomUser -Email user@company.com | Get-ZoomUserAssistant -AssistantEmail assistant@company.com
+    Sets assistant@company.com as assistant for user@company.com
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding(DefaultParameterSetName = 'Id')]
     Param(
         [Parameter(
@@ -352,7 +571,7 @@ function Set-ZoomUserAssistant {
         [string]$AssistantEmail
     )
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('assistant_email', $AssistantEmail)
 
     $Endpoint = 'https://api.zoom.us/v1/user/assistant/set'
@@ -367,6 +586,23 @@ function Set-ZoomUserAssistant {
 }
 
 function Remove-ZoomUserAssistant {
+    <#
+    .SYNOPSIS
+    Remove assistants for given user.
+
+    .PARAMETER Id
+    The host's user id.
+
+    .PARAMETER Email
+    The host's email address.
+
+    .EXAMPLE
+    Get-ZoomUser -Email user@company.com | Remove-ZoomUserAssistant
+    Removes assistants of user@company.com.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding(
         SupportsShouldProcess = $True,
         DefaultParameterSetName = 'Id'
@@ -386,7 +622,7 @@ function Remove-ZoomUserAssistant {
         [string]$Email
     )
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
 
     $Endpoint = 'https://api.zoom.us/v1/user/assistant/delete'
 
@@ -404,6 +640,20 @@ function Remove-ZoomUserAssistant {
 }
 
 function New-ZoomGroup {
+    <#
+    .SYNOPSIS
+    Create a group on Zoom, return the new group info.
+
+    .PARAMETER Name
+    Group name, must be unique in one account.
+
+    .EXAMPLE
+    New-ZoomGroup -Name TestGroup
+    Create new group named TestGroup.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory = $true)]
@@ -413,14 +663,27 @@ function New-ZoomGroup {
 
     $Endpoint = 'https://api.zoom.us/v1/group/create'
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('name', $Name)
 
     Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
 }
 
 function Add-ZoomGroupMember {
-    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+    Adds members to a group on Zoom.
+
+    .PARAMETER GroupId
+    Group ID.
+
+    .PARAMETER Id
+    The member IDs, pipeline and arrays are accepted
+
+    .OUTPUTS
+    PSCustomObject
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
@@ -437,18 +700,29 @@ function Add-ZoomGroupMember {
 
     $Endpoint = 'https://api.zoom.us/v1/group/member/add'
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('id', $GroupId)
+    $Headers.Add('member_ids', $Id -join ',')
 
-    foreach ($User in $Id) {
-        $MemberIds += "$User,"
+    if ($pscmdlet.ShouldProcess($Id -join ',', "Add Zoom user(s) to $GroupId")) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
     }
-    $Headers.Add('member_ids', $MemberIds.TrimEnd(','))
-
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
 }
 
 function Remove-ZoomGroupMember {
+    <#
+    .SYNOPSIS
+    Remove members to a group on Zoom.
+
+    .PARAMETER GroupId
+    Group ID.
+
+    .PARAMETER Id
+    The member IDs, pipeline and arrays are accepted
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(Mandatory = $true)]
@@ -466,20 +740,30 @@ function Remove-ZoomGroupMember {
 
     $Endpoint = 'https://api.zoom.us/v1/group/member/delete'
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('id', $GroupId)
+    $Headers.Add('member_ids', $Id -join ',')
 
-    foreach ($User in $Id) {
-        $MemberIds += "$User,"
-    }
-    $Headers.Add('member_ids', $MemberIds)
-
-    if ($pscmdlet.ShouldProcess($MemberIds, "Remove Zoom user from $GroupId")) {
+    if ($pscmdlet.ShouldProcess($Id -join ',', "Remove Zoom user(s) from $GroupId")) {
         Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
     }
 }
 
 function Get-ZoomGroupMember {
+    <#
+    .SYNOPSIS
+    Lists the members of a group on Zoom.
+
+    .PARAMETER Id
+    Group ID.
+
+    .EXAMPLE
+    Get-ZoomGroup -Name TestGroup | Get-ZoomGroupMember
+    Gets members of TestGroup.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
     [CmdletBinding()]
     Param(
         [Parameter(
@@ -493,14 +777,14 @@ function Get-ZoomGroupMember {
 
     $Endpoint = 'https://api.zoom.us/v1/group/member/list'
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('id', $Id)
     $Headers.Add('page_size', 300)
     $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
 
     Write-Verbose "There are $($Result.page_count) pages of users"
-    foreach ($Page in $Result.page_count) {
-        $Headers = Get-ZoomAuthHeader
+    for ($Page = 1; $Page -le $Result.page_count; $Page++) {
+        $Headers = Get-ZoomApiAuth
         $Headers.Add('id', $Id)
         $Headers.Add('page_size', 300)
         $Headers.Add('page_number', $Page)
@@ -510,10 +794,10 @@ function Get-ZoomGroupMember {
     $Users
 }
 
-function Set-ZoomUserInfo {
+function Set-ZoomUser {
     <#
     .SYNOPSIS
-    Set personal meeting Id and vanity name for Zoom user.
+    Update user info on Zoom via user ID.
 
     .PARAMETER Id
     Zoom user to update.
@@ -536,8 +820,11 @@ function Set-ZoomUserInfo {
     .PARAMETER VanityName
     Personal meeting room name.
 
+    .PARAMETER GroupId
+    User Group ID. If set default user group, the parameter’s default value is the default user group.
+
     .EXAMPLE
-    Get-ZoomUser -Id user@company.com | Set-ZoomUserInfo -License Corp
+    Get-ZoomUser -Id user@company.com | Set-ZoomUser -License Corp
     Sets Zoom license to Corp on user@company.com's account.
 
     .OUTPUTS
@@ -551,7 +838,7 @@ function Set-ZoomUserInfo {
 			ValueFromPipelineByPropertyName = $true
 		)]
         [ValidateNotNullOrEmpty()]
-        [string]$Id,
+        [string[]]$Id,
 
         [Parameter(Mandatory = $false)]
         [string]$FirstName,
@@ -571,31 +858,37 @@ function Set-ZoomUserInfo {
         [bool]$EnablePmi,
 
         [Parameter(Mandatory = $false)]
-        [string]$VanityName
+        [string]$VanityName,
+
+        [Parameter(Mandatory = $false)]
+        [string]$GroupId
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/update'
 
-    if ($pscmdlet.ShouldProcess($Id, 'Update Zoom user info')) {
+    foreach ($User in $Id) {
+        if ($pscmdlet.ShouldProcess($User, 'Update Zoom user info')) {
 
-        $Headers = Get-ZoomAuthHeader
-        $Headers.Add('id', $Id)
-        if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
-        if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
-        if ($PSBoundParameters.ContainsKey('License')) {
-            $Type = switch ($License) {
-                'Basic' { 1 }
-                'Pro' { 2 }
-                'Corp' { 3 }
+            $Headers = Get-ZoomApiAuth
+            $Headers.Add('id', $User)
+            if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
+            if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
+            if ($PSBoundParameters.ContainsKey('License')) {
+                $Type = switch ($License) {
+                    'Basic' { 1 }
+                    'Pro' { 2 }
+                    'Corp' { 3 }
+                }
+                
+                $Headers.Add('type', $Type)
             }
-            
-            $Headers.Add('type', $Type)
-        }
-        if ($PSBoundParameters.ContainsKey('Pmi')) { $Headers.Add('pmi', $Pmi) }
-        if ($PSBoundParameters.ContainsKey('EnablePmi')) { $Headers.Add('enable_use_pmi', $EnablePmi) }
-        if ($PSBoundParameters.ContainsKey('VanityName')) { $Headers.Add('vanity_name', $VanityName) }
+            if ($PSBoundParameters.ContainsKey('Pmi')) { $Headers.Add('pmi', $Pmi) }
+            if ($PSBoundParameters.ContainsKey('EnablePmi')) { $Headers.Add('enable_use_pmi', $EnablePmi) }
+            if ($PSBoundParameters.ContainsKey('VanityName')) { $Headers.Add('vanity_name', $VanityName) }
+            if ($PSBoundParameters.ContainsKey('GroupId')) { $Headers.Add('group_id', $GroupId) }
 
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        }
     }
 }
 
@@ -668,7 +961,7 @@ function Set-ZoomUserPicture {
         "--$boundary--$LF"
         ) -join $LF#>
 
-    $Headers = Get-ZoomAuthHeader
+    $Headers = Get-ZoomApiAuth
     $Headers.Add('id', $Id)
     $Headers.Add('pic_file', $FileContent)
 
@@ -689,6 +982,19 @@ function New-ZoomSSOUser {
     .PARAMETER License
     License to grant new Zoom user. Basic, Pro, or Corp.
 
+    .PARAMETER FirstName
+    User's first name.
+
+    .PARAMETER LastName
+    User's last name.
+
+    .PARAMETER Pmi
+    Personal Meeting ID, long, length must be 10.
+
+    .PARAMETER GroupId
+    User Group ID. If set default user group, the parameter’s default value is the default user group.
+
+
     .EXAMPLE
     New-ZoomSSOUser -Email user@company.com -License Pro
     Pre-provisions a Zoom user account for email user@company.com with a Pro license.
@@ -696,7 +1002,7 @@ function New-ZoomSSOUser {
     .OUTPUTS
     PSCustomObject
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -704,11 +1010,24 @@ function New-ZoomSSOUser {
 			ValueFromPipelineByPropertyName = $true
 		)]
         [ValidateNotNullOrEmpty()]
-        [string[]]$Email,
+        [string]$Email,
 
         [Parameter(Mandatory = $true)]
         [ValidateSet('Basic', 'Pro', 'Corp')]
-        [string]$License
+        [string]$License,
+
+        [Parameter(Mandatory = $false)]
+        [string]$FirstName,
+
+        [Parameter(Mandatory = $false)]
+        [string]$LastName,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1000000000, 9999999999)]
+        [long]$Pmi,
+
+        [Parameter(Mandatory = $false)]
+        [string]$GroupId
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/ssocreate'
@@ -719,12 +1038,89 @@ function New-ZoomSSOUser {
         'Corp' { 3 }
     }
 
+    $Headers = Get-ZoomApiAuth
+    $Headers.Add('email', $Email)
+    if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
+    if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
+    $Headers.Add('type', $Type)
+    if ($PSBoundParameters.ContainsKey('Pmi')) { $Headers.Add('pmi', $Pmi) }
+    if ($PSBoundParameters.ContainsKey('GroupId')) { $Headers.Add('group_id', $GroupId) }
+    
+    if ($pscmdlet.ShouldProcess($Email, 'New Zoom SSO user')) {
+        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    }
+}
+
+function New-ZoomUser {
+    <#
+    .SYNOPSIS
+    Create new Zoom user account.
+
+    .PARAMETER Email
+    New Zoom user email address.
+
+    .PARAMETER FirstName
+    User's first name.
+
+    .PARAMETER LastName
+    User's last name.
+
+    .PARAMETER License
+    License type. Basic, Pro, or Corp.
+
+    .PARAMETER GroupId
+    User Group ID. If set default user group, the parameter’s default value is the default user group.
+
+    .EXAMPLE
+    New-ZoomUser -Email user@company.com -License Pro
+    Creates a Zoom user account for email user@company.com with a Pro license.
+
+    .OUTPUTS
+    PSCustomObject
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
+    Param(
+        [Parameter(
+            Mandatory = $true,
+			ValueFromPipeline = $true,
+			ValueFromPipelineByPropertyName = $true
+		)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$Email,
+
+        [Parameter(Mandatory = $false)]
+        [string]$FirstName,
+
+        [Parameter(Mandatory = $false)]
+        [string]$LastName,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Basic', 'Pro', 'Corp')]
+        [string]$License,
+
+        [Parameter(Mandatory = $false)]
+        [string]$GroupId
+    )
+
+    $Endpoint = 'https://api.zoom.us/v1/user/create'
+
+    $Type = switch ($License) {
+        'Basic' { 1 }
+        'Pro' { 2 }
+        'Corp' { 3 }
+    }
+
     foreach ($User in $Email) {
-        $Headers = Get-ZoomAuthHeader
+        $Headers = Get-ZoomApiAuth
         $Headers.Add('email', $User)
         $Headers.Add('type', $Type)
+        if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
+        if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
+        if ($PSBoundParameters.ContainsKey('GroupId')) { $Headers.Add('group_id', $GroupId) }
 
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        if ($pscmdlet.ShouldProcess($User, 'New Zoom user')) {
+            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        }
     }
 }
 
