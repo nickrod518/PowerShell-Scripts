@@ -903,17 +903,28 @@ function Set-ZoomUserPicture {
     .PARAMETER Path
     Path to profile picture to upload.
 
+    .PARAMETER ByteArray
+    Byte array representing the picture.
+
     .EXAMPLE
     Get-ZoomUser -Id user@company.com | Set-ZoomUserPicture -Path .\picture.jpg
     Uploads new profile picture to user@company.com's account.
+
+    .EXAMPLE
+    $ThumbnailByteArray = Get-ADUser UserId -Properties thumbnailPhoto | Select-Object -ExpandProperty thumbnailPhoto
+    Get-ZoomUser -Id user@company.com | Set-ZoomUserPicture -ByteArray $ThumbnailByteArray
+    Uploads new profile picture to user@company.com's account from their AD thumbnail photo. 
 
     .OUTPUTS
     PSCustomObject
 
     .NOTES
-    This function does not work in its current state.
+    This function uses C# to form the rest call because Invoke-RestMethod was incompatible.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        DefaultParameterSetName = 'Path'
+    )]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -923,52 +934,112 @@ function Set-ZoomUserPicture {
         [ValidateNotNullOrEmpty()]
         [string]$Id,
 
-        [Parameter(Mandatory = $true)]
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = 'Path'
+		)]
         [ValidateScript({ Test-Path $_ -PathType Leaf })]
         [ValidatePattern('.jp*.g$')]
-        [string]$Path
+        [string]$Path,
+
+        [Parameter(
+            Mandatory = $true,
+			ValueFromPipeline = $true,
+			ValueFromPipelineByPropertyName = $true,
+            ParameterSetName = 'Id'
+		)]
+        [ValidateNotNullOrEmpty()]
+        [byte[]]$ByteArray
     )
 
-    Write-Warning "This function is experimental and may not work."
-
     $Endpoint = 'https://api.zoom.us/v1/user/uploadpicture'
+    $ApiAuth = Get-ZoomApiAuth
 
-    $Bytes = [IO.File]::ReadAllBytes($Path)
-    $Encoding = [System.Text.Encoding]::ASCII
-    $FileContent = $Encoding.GetString($Bytes)
+    $Boundary = [guid]::NewGuid()
 
-    <#$boundary = [System.Guid]::NewGuid().ToString()
-    $LF = "`n"
-    $bodyLines = (
-        "--$boundary",
-        "api_key: Uo4sjR8IQcOBWCUqxFlM_g",
-        "--$boundary",
-        "api_secret: 0PxInW592LrbpM0wxoDd3NesO5VbU7OKm8lT",
-        "--$boundary",
-        "id: $Id",
-        "--$boundary",
-        "Content-Disposition: form-data; name=`"pic_file`"$LF",
-        $FileContent,
-        "--$boundary--$LF"
-        ) -join $LF
-    $bodyLines = (
-        "api_key: Uo4sjR8IQcOBWCUqxFlM_g",
-        "api_secret: 0PxInW592LrbpM0wxoDd3NesO5VbU7OKm8lT",
-        "id: $Id",
-        "--$boundary",
-        "Content-Disposition: form-data; name=`"pic_file`"$LF",
-        $FileContent,
-        "--$boundary--$LF"
-        ) -join $LF#>
+    $Source = @"
+    using System;
+    using System.IO;
+    using System.Collections.Generic;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using System.Net;
+    using System.Net.Http;
+    using System.Net.Http.Headers;
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('id', $Id)
-    $Headers.Add('pic_file', $FileContent)
+    namespace Zoom
+    {
+        public static class Tools
+        {
+            public static string UploadUserPicture(string Id, byte[] byteArray, string fileName)
+            {
+                Uri webService = new Uri(@"$Endpoint");
+                HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, webService);
+                requestMessage.Headers.ExpectContinue = false;
 
+                MultipartFormDataContent multiPartContent = new MultipartFormDataContent("$Boundary");
 
+                HttpContent apiKeyContent = new StringContent(@"$($ApiAuth.api_key)");
+                multiPartContent.Add(apiKeyContent, "api_key");
 
-    #Invoke-WebRequest -Headers $Headers -Method Post -Uri $Endpoint -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $bodyLines
-    Invoke-RestMethod -Uri $Endpoint -Method Post -Body $Headers -ContentType 'multipart/form-data'
+                HttpContent apiSecretContent = new StringContent(@"$($ApiAuth.api_secret)");
+                multiPartContent.Add(apiSecretContent, "api_secret");
+
+                HttpContent idContent = new StringContent(Id);
+                multiPartContent.Add(idContent, "id");
+
+                ByteArrayContent byteArrayContent = new ByteArrayContent(byteArray);
+                byteArrayContent.Headers.Add("Content-Type", "application/octet-stream");
+                multiPartContent.Add(byteArrayContent, "pic_file", fileName);
+
+                requestMessage.Content = multiPartContent;
+    
+                HttpClient httpClient = new HttpClient();
+                httpClient.Timeout = new TimeSpan(0, 2, 0);
+                try
+                {
+                    Task<HttpResponseMessage> httpRequest = httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseContentRead, CancellationToken.None);
+                    HttpResponseMessage httpResponse = httpRequest.Result;
+                    HttpStatusCode statusCode = httpResponse.StatusCode;
+                    HttpContent responseContent = httpResponse.Content;
+    
+                    if (responseContent != null)
+                    {
+                        Task<String> stringContentsTask = responseContent.ReadAsStringAsync();
+                        String stringContents = stringContentsTask.Result;
+                        return stringContents;
+                    }
+                    else
+                    {
+                        return "No response.";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+    }
+"@
+
+    $Assemblies = ( 
+        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.1\System.Net.dll',
+        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.1\System.Net.Http.dll'
+    )
+
+    # We get errors about this already existing after the first run, so silence them
+    try { Add-Type -TypeDefinition $Source -Language CSharp -ReferencedAssemblies $Assemblies } catch {}
+
+    if ($pscmdlet.ShouldProcess($Id, 'Update Zoom user picture')) {
+        if ($PSCmdlet.ParameterSetName -eq 'Path') {
+            $ByteArray = Get-Content -Path $Path -Encoding Byte
+            $FileName = $Path.Split('\')[-1]
+        } else {
+            $FileName = 'ProfilePicture.jpg'
+        }
+        [Zoom.Tools]::UploadUserPicture($Id, $ByteArray, $FileName) | ConvertFrom-Json | Read-ZoomResponse
+    }
 }
 
 function New-ZoomSSOUser {

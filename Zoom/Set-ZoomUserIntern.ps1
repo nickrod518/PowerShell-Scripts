@@ -18,7 +18,7 @@ $OtherGroupIds = ($Groups | Where-Object -Property name -ne 'Interns/Temps').gro
 # Get Zoom intern users from AD group and set their Zoom license and group
 Get-ADGroupMember -Recursive -Identity 'Global - Interns' | Get-ADUser | 
     Select-Object -ExpandProperty UserPrincipalName | ForEach-Object {
-        if (Test-ZoomUserEmail -Email $_) {
+        try {
             $Id = Get-ZoomUser -Email $_ | Select-Object -ExpandProperty id
 
             # Set license to Basic
@@ -29,5 +29,7 @@ Get-ADGroupMember -Recursive -Identity 'Global - Interns' | Get-ADUser |
 
             # Add user to intern group
             Add-ZoomGroupMember -GroupId $InternGroupId -Id $Id
+        } catch {
+            Write-Warning "$_ not found."
         }
     }

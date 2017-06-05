@@ -21,7 +21,7 @@ foreach ($Group in Get-ZoomGroup -All) {
 $InternationalGroup = Get-ZoomGroup -Name 'International Calling' | Select-Object -ExpandProperty group_id
 
 foreach ($User in $ADUsers) {
-    if (Test-ZoomUserEmail -Email $User) {
+    try {
         # Get the associated Zoom user
         $ZoomUser = Get-ZoomUser -Email $User | Select-Object -ExpandProperty id
 
@@ -36,5 +36,7 @@ foreach ($User in $ADUsers) {
                 Remove-ZoomGroupMember -Id $ZoomUser -GroupId $Group
             }
         }
+    } catch {
+        Write-Warning "$User not found."
     }
 }
