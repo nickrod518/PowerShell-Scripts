@@ -17,7 +17,7 @@ $SearchBase = 'OU=Users,DC=Company,DC=LOCAL'
 $ADUsers = Get-ADUser -SearchBase $SearchBase -Filter $EnabledFilter -Properties telephoneNumber, thumbnailPhoto, mobile |
     Where-Object { $_.distinguishedName -notlike '*OU=Disabled*'}
 
-$DefaultGroup = Get-ZoomGroup -Name General | Select-Object -ExpandProperty group_id
+$DefaultGroup = Get-ZoomGroup -Name Default | Select-Object -ExpandProperty group_id
 
 $ZoomUsers = Get-ZoomUser -All
 foreach ($User in $ADUsers) {
@@ -38,7 +38,14 @@ foreach ($User in $ADUsers) {
             License = 'Pro'
             GroupId = $DefaultGroup
         }
-        if ($PhoneNumber) { $Params.Add('Pmi', $PhoneNumber) }
+        if ($PhoneNumber) {
+            if ($ZoomUsers.pmi -notcontains $PhoneNumber) {
+                $Params.Add('Pmi', $PhoneNumber)
+            } else {
+                Write-Warning "Unable to set Pmi for $($User.UserPrincipalName), $PhoneNumber already exists."
+            }
+        }
+
         New-ZoomSSOUser @Params
     # Update existing accounts with their AD info
     } else {
@@ -53,8 +60,14 @@ foreach ($User in $ADUsers) {
         if ($ZoomUser.last_name -ne $User.Surname) {
             $Params.Add('LastName', $User.Surname)
         }
-        if ($PhoneNumber) {
-            if ($ZoomUser.pmi -ne [int64]$PhoneNumber) { $Params.Add('Pmi', $PhoneNumber) }
+        if ($PhoneNumber -and $ZoomUser.type -ne 1) {
+            if ($ZoomUser.pmi -ne [int64]$PhoneNumber) {
+                if ($ZoomUsers.pmi -notcontains $PhoneNumber) {
+                    $Params.Add('Pmi', $PhoneNumber)
+                } else {
+                    Write-Warning "Unable to set Pmi for $($User.UserPrincipalName), $PhoneNumber already exists."
+                }
+            }
         }
         if ($ZoomUser.vanity_url.Split('/')[-1] -ne $User.UserPrincipalName.Split('@')[0]) {
             $Params.Add('VanityName', $User.UserPrincipalName.Split('@')[0])

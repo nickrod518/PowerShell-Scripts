@@ -4,7 +4,7 @@ function Get-ZoomApiAuth {
     Gets a hashtable for a Zoom Api REST body that includes the api key and secret.
 
     .EXAMPLE
-    $Headers = Get-ZoomApiAuth
+    $RequestBody = Get-ZoomApiAuth
 
     .OUTPUTS
     Hashtable
@@ -74,8 +74,18 @@ function Read-ZoomResponse {
     .SYNOPSIS
     Parses Zoom REST response so errors are returned properly
 
+    .PARAMETER Response
+    The JSON response from the Api call.
+
+    .PARAMETER RequestBody
+    The hashtable that was sent through the Api call.
+
+    .PARAMETER Endpoint
+    Api endpoint Url that was called.
+
     .EXAMPLE
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint -Endpoint $Endpoint
     #>
     [CmdletBinding()]
     Param(
@@ -83,12 +93,22 @@ function Read-ZoomResponse {
             Mandatory = $true,
 			ValueFromPipeline = $true
 		)]
-        [PSCustomObject]$Response
+        [PSCustomObject]$Response,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$RequestBody,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Endpoint
     )
 
+    $ApiCallInfo = "Api Endpoint: $Endpoint`n"
+    $ApiCallInfo += "Api call body:$($RequestBody | Out-String)"
+
     if ($Response.PSObject.Properties.Name -match 'error') {
-        Write-Error -Message $Response.error.message -ErrorId $Response.error.code
+        Write-Error -Message "$($Response.error.message)`n$ApiCallInfo" -ErrorId $Response.error.code -Category InvalidOperation
     } else {
+        Write-Verbose "$($Response.error.message)`nApi call body:$($RequestBody | Out-String)"
         $Response
     }
 }
@@ -154,17 +174,20 @@ function Get-ZoomUser {
     if ($PSCmdlet.ParameterSetName -eq 'All') {
         $Endpoint = 'https://api.zoom.us/v1/user/list'
 
-        $Headers = Get-ZoomApiAuth
-        $Headers.Add('page_size', 300)
+        $RequestBody = Get-ZoomApiAuth
+        $RequestBody.Add('page_size', 300)
 
-        $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        $Result = Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 
         Write-Verbose "There are $($Result.page_count) pages of users"
         for ($Page = 1; $Page -le $Result.page_count; $Page++) {
-            $Headers = Get-ZoomApiAuth
-            $Headers.Add('page_size', 300)
-            $Headers.Add('page_number', $Page)
-            (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).users
+            $RequestBody = Get-ZoomApiAuth
+            $RequestBody.Add('page_size', 300)
+            $RequestBody.Add('page_number', $Page)
+            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
+                Select-Object -ExpandProperty users
         }
     } elseif ($PSCmdlet.ParameterSetName -eq 'Email') {
         $Endpoint = 'https://api.zoom.us/v1/user/getbyemail'
@@ -178,18 +201,20 @@ function Get-ZoomUser {
         }
 
         foreach ($User in $Email) {
-            $Headers = Get-ZoomApiAuth
-            $Headers.Add('email', $User)
-            $Headers.Add('login_type', $Type)
-            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+            $RequestBody = Get-ZoomApiAuth
+            $RequestBody.Add('email', $User)
+            $RequestBody.Add('login_type', $Type)
+            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
         }
     } elseif ($PSCmdlet.ParameterSetName -eq 'Id') {
         $Endpoint = 'https://api.zoom.us/v1/user/get'
 
         foreach ($User in $Id) {
-            $Headers = Get-ZoomApiAuth
-            $Headers.Add('id', $User)
-            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+            $RequestBody = Get-ZoomApiAuth
+            $RequestBody.Add('id', $User)
+            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
         }
     }
 }
@@ -211,16 +236,19 @@ function Get-ZoomPendingUser {
 
     $Endpoint = 'https://api.zoom.us/v1/user/pending'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('page_size', 300)
-    $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('page_size', 300)
+    $Result = Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 
     Write-Verbose "There are $($Result.page_count) pages of pending users"
     for ($Page = 1; $Page -le $Result.page_count; $Page++) {
-        $Headers = Get-ZoomApiAuth
-        $Headers.Add('page_size', 300)
-        $Headers.Add('page_number', $Page)
-        $Users += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).users
+        $RequestBody = Get-ZoomApiAuth
+        $RequestBody.Add('page_size', 300)
+        $RequestBody.Add('page_number', $Page)
+        $Users += Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
+            Select-Object -ExpandProperty users
     }
 
     $Users
@@ -265,11 +293,12 @@ function Remove-ZoomUser {
         'https://api.zoom.us/v1/user/delete'
     }
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('id', $Id)
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('id', $Id)
 
     if ($pscmdlet.ShouldProcess($Id, 'Remove Zoom user')) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -298,11 +327,12 @@ function Remove-ZoomGroup {
 
     $Endpoint = 'https://api.zoom.us/v1/group/delete'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('id', $Id)
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('id', $Id)
 
     if ($pscmdlet.ShouldProcess($Id, 'Remove Zoom group')) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -327,10 +357,12 @@ function Test-ZoomUserEmail {
 
     $Endpoint = 'https://api.zoom.us/v1/user/checkemail'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('email', $Email)
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('email', $Email)
 
-    (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).existed_email
+    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
+        Select-Object -ExpandProperty existed_email
 }
 
 function Disable-ZoomUser {
@@ -356,14 +388,15 @@ function Disable-ZoomUser {
         [string]$Id
     )
 
-    $Headers = Get-ZoomApiAuth
+    $RequestBody = Get-ZoomApiAuth
 
     $Endpoint = 'https://api.zoom.us/v1/user/deactivate'
 
-    $Headers.Add('id', $Id)
+    $RequestBody.Add('id', $Id)
 
     if ($pscmdlet.ShouldProcess($Id, 'Deactivate Zoom user')) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -411,7 +444,7 @@ function Get-ZoomGroup {
         [switch]$All
     )
 
-    $Headers = Get-ZoomApiAuth
+    $RequestBody = Get-ZoomApiAuth
 
     $Endpoint = if ($PSCmdlet.ParameterSetName -ne 'Id') {
         'https://api.zoom.us/v1/group/list'
@@ -420,7 +453,9 @@ function Get-ZoomGroup {
     }
 
     if ($PSCmdlet.ParameterSetName -ne 'Id') {
-        $Groups = (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).groups
+        $Groups = Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
+            Select-Object -ExpandProperty groups
 
         if ($PSCmdlet.ParameterSetName -eq 'Name') {
             $Groups | Where-Object -Property name -eq $Name
@@ -428,8 +463,9 @@ function Get-ZoomGroup {
             $Groups
         }
     } else {
-        $Headers.Add('id', $Id)
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        $RequestBody.Add('id', $Id)
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -459,23 +495,26 @@ function Get-ZoomMeeting {
         [string[]]$Id
     )
 
-    $Headers = Get-ZoomApiAuth
+    $RequestBody = Get-ZoomApiAuth
 
     $Endpoint = 'https://api.zoom.us/v1/meeting/list'
 
     foreach ($User in $Id) {
-        $Headers = Get-ZoomApiAuth
-        $Headers.Add('page_size', 300)
-        $Headers.Add('host_id', $User)
-        $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        $RequestBody = Get-ZoomApiAuth
+        $RequestBody.Add('page_size', 300)
+        $RequestBody.Add('host_id', $User)
+        $Result = Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post | 
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 
         Write-Verbose "There are $($Result.page_count) pages of meetings"
         for ($Page = 1; $Page -le $Result.page_count; $Page++) {
-            $Headers = Get-ZoomApiAuth
-            $Headers.Add('host_id', $User)
-            $Headers.Add('page_size', 300)
-            $Headers.Add('page_number', $Page)
-            $Meetings += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).meetings
+            $RequestBody = Get-ZoomApiAuth
+            $RequestBody.Add('host_id', $User)
+            $RequestBody.Add('page_size', 300)
+            $RequestBody.Add('page_number', $Page)
+            $Meetings += Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
+                Select-Object -ExpandProperty meetings
         }
         
         $Meetings
@@ -516,17 +555,18 @@ function Get-ZoomUserScheduler {
         [string]$Email
     )
 
-    $Headers = Get-ZoomApiAuth
+    $RequestBody = Get-ZoomApiAuth
 
     $Endpoint = 'https://api.zoom.us/v1/user/scheduleforhost/list'
 
     if ($PSCmdlet.ParameterSetName -eq 'Id') {
-        $Headers.Add('id', $Id)
+        $RequestBody.Add('id', $Id)
     } else {
-        $Headers.Add('host_email', $Email)
+        $RequestBody.Add('host_email', $Email)
     }
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 }
 
 function Set-ZoomUserAssistant {
@@ -571,18 +611,19 @@ function Set-ZoomUserAssistant {
         [string]$AssistantEmail
     )
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('assistant_email', $AssistantEmail)
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('assistant_email', $AssistantEmail)
 
     $Endpoint = 'https://api.zoom.us/v1/user/assistant/set'
 
     if ($PSCmdlet.ParameterSetName -ne 'Id') {
-        $Headers.Add('id', $Id)
+        $RequestBody.Add('id', $Id)
     } else {
-        $Headers.Add('host_email', $Email)
+        $RequestBody.Add('host_email', $Email)
     }
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 }
 
 function Remove-ZoomUserAssistant {
@@ -622,20 +663,21 @@ function Remove-ZoomUserAssistant {
         [string]$Email
     )
 
-    $Headers = Get-ZoomApiAuth
+    $RequestBody = Get-ZoomApiAuth
 
     $Endpoint = 'https://api.zoom.us/v1/user/assistant/delete'
 
     if ($PSCmdlet.ParameterSetName -ne 'Id') {
         $Assistant = $Id
-        $Headers.Add('id', $Id)
+        $RequestBody.Add('id', $Id)
     } else {
         $Assistant = $Email
-        $Headers.Add('host_email', $Email)
+        $RequestBody.Add('host_email', $Email)
     }
 
     if ($pscmdlet.ShouldProcess($Assistant, 'Remove Zoom user assistant')) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -663,10 +705,11 @@ function New-ZoomGroup {
 
     $Endpoint = 'https://api.zoom.us/v1/group/create'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('name', $Name)
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('name', $Name)
 
-    Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 }
 
 function Add-ZoomGroupMember {
@@ -700,12 +743,13 @@ function Add-ZoomGroupMember {
 
     $Endpoint = 'https://api.zoom.us/v1/group/member/add'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('id', $GroupId)
-    $Headers.Add('member_ids', $Id -join ',')
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('id', $GroupId)
+    $RequestBody.Add('member_ids', $Id -join ',')
 
     if ($pscmdlet.ShouldProcess($Id -join ',', "Add Zoom user(s) to $GroupId")) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -740,12 +784,13 @@ function Remove-ZoomGroupMember {
 
     $Endpoint = 'https://api.zoom.us/v1/group/member/delete'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('id', $GroupId)
-    $Headers.Add('member_ids', $Id -join ',')
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('id', $GroupId)
+    $RequestBody.Add('member_ids', $Id -join ',')
 
     if ($pscmdlet.ShouldProcess($Id -join ',', "Remove Zoom user(s) from $GroupId")) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -777,18 +822,21 @@ function Get-ZoomGroupMember {
 
     $Endpoint = 'https://api.zoom.us/v1/group/member/list'
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('id', $Id)
-    $Headers.Add('page_size', 300)
-    $Result = Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('id', $Id)
+    $RequestBody.Add('page_size', 300)
+    $Result = Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
 
     Write-Verbose "There are $($Result.page_count) pages of users"
     for ($Page = 1; $Page -le $Result.page_count; $Page++) {
-        $Headers = Get-ZoomApiAuth
-        $Headers.Add('id', $Id)
-        $Headers.Add('page_size', 300)
-        $Headers.Add('page_number', $Page)
-        $Users += (Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse).members
+        $RequestBody = Get-ZoomApiAuth
+        $RequestBody.Add('id', $Id)
+        $RequestBody.Add('page_size', 300)
+        $RequestBody.Add('page_number', $Page)
+        $Users += Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
+            Select-Object -ExpandProperty members
     }
 
     $Users
@@ -869,10 +917,10 @@ function Set-ZoomUser {
     foreach ($User in $Id) {
         if ($pscmdlet.ShouldProcess($User, 'Update Zoom user info')) {
 
-            $Headers = Get-ZoomApiAuth
-            $Headers.Add('id', $User)
-            if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
-            if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
+            $RequestBody = Get-ZoomApiAuth
+            $RequestBody.Add('id', $User)
+            if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
+            if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
             if ($PSBoundParameters.ContainsKey('License')) {
                 $Type = switch ($License) {
                     'Basic' { 1 }
@@ -880,14 +928,15 @@ function Set-ZoomUser {
                     'Corp' { 3 }
                 }
                 
-                $Headers.Add('type', $Type)
+                $RequestBody.Add('type', $Type)
             }
-            if ($PSBoundParameters.ContainsKey('Pmi')) { $Headers.Add('pmi', $Pmi) }
-            if ($PSBoundParameters.ContainsKey('EnablePmi')) { $Headers.Add('enable_use_pmi', $EnablePmi) }
-            if ($PSBoundParameters.ContainsKey('VanityName')) { $Headers.Add('vanity_name', $VanityName) }
-            if ($PSBoundParameters.ContainsKey('GroupId')) { $Headers.Add('group_id', $GroupId) }
+            if ($PSBoundParameters.ContainsKey('Pmi')) { $RequestBody.Add('pmi', $Pmi) }
+            if ($PSBoundParameters.ContainsKey('EnablePmi')) { $RequestBody.Add('enable_use_pmi', $EnablePmi) }
+            if ($PSBoundParameters.ContainsKey('VanityName')) { $RequestBody.Add('vanity_name', $VanityName) }
+            if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
 
-            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
         }
     }
 }
@@ -1038,7 +1087,14 @@ function Set-ZoomUserPicture {
         } else {
             $FileName = 'ProfilePicture.jpg'
         }
-        [Zoom.Tools]::UploadUserPicture($Id, $ByteArray, $FileName) | ConvertFrom-Json | Read-ZoomResponse
+
+        $RequestBody = Get-ZoomApiAuth
+        $RequestBody.Add('id', $Id)
+        $RequestBody.Add('file_name', $FileName)
+        $RequestBody.Add('byte_array', $ByteArray)
+
+        [Zoom.Tools]::UploadUserPicture($Id, $ByteArray, $FileName) | ConvertFrom-Json |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -1109,16 +1165,17 @@ function New-ZoomSSOUser {
         'Corp' { 3 }
     }
 
-    $Headers = Get-ZoomApiAuth
-    $Headers.Add('email', $Email)
-    if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
-    if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
-    $Headers.Add('type', $Type)
-    if ($PSBoundParameters.ContainsKey('Pmi')) { $Headers.Add('pmi', $Pmi) }
-    if ($PSBoundParameters.ContainsKey('GroupId')) { $Headers.Add('group_id', $GroupId) }
+    $RequestBody = Get-ZoomApiAuth
+    $RequestBody.Add('email', $Email)
+    if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
+    if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
+    $RequestBody.Add('type', $Type)
+    if ($PSBoundParameters.ContainsKey('Pmi')) { $RequestBody.Add('pmi', $Pmi) }
+    if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
     
     if ($pscmdlet.ShouldProcess($Email, 'New Zoom SSO user')) {
-        Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
@@ -1182,15 +1239,16 @@ function New-ZoomUser {
     }
 
     foreach ($User in $Email) {
-        $Headers = Get-ZoomApiAuth
-        $Headers.Add('email', $User)
-        $Headers.Add('type', $Type)
-        if ($PSBoundParameters.ContainsKey('FirstName')) { $Headers.Add('first_name', $FirstName) }
-        if ($PSBoundParameters.ContainsKey('LastName')) { $Headers.Add('last_name', $LastName) }
-        if ($PSBoundParameters.ContainsKey('GroupId')) { $Headers.Add('group_id', $GroupId) }
+        $RequestBody = Get-ZoomApiAuth
+        $RequestBody.Add('email', $User)
+        $RequestBody.Add('type', $Type)
+        if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
+        if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
+        if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
 
         if ($pscmdlet.ShouldProcess($User, 'New Zoom user')) {
-            Invoke-RestMethod -Uri $Endpoint -Body $Headers -Method Post | Read-ZoomResponse
+            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
         }
     }
 }
