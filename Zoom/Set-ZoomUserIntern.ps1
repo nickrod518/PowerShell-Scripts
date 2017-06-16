@@ -24,7 +24,7 @@ $OtherGroupIds | ForEach-Object { $OtherGroupMembers.Add($_, (Get-ZoomGroupMembe
 
 # Get Zoom intern users from AD group and set their Zoom license and group
 Get-ADGroupMember -Recursive -Identity 'Global - Interns' | Get-ADUser | 
-    Select-Object -ExpandProperty UserPrincipalName | ForEach-Object {
+    Select-Object -ExpandProperty mail | ForEach-Object {
         try {
             $ZoomUser = Get-ZoomUser -Email $_
 

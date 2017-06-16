@@ -30,7 +30,7 @@ function Set-ZoomApiAuth {
     Optional, sets a new Api secret.
 
     .EXAMPLE
-    Set-ZoomApi -Key 'mysupersecretapikey' -Secret 'mysupersecretapisecret
+    Set-ZoomApi -Key 'mysupersecretapikey' -Secret 'mysupersecretapisecret'
     Sets your Zoom api key and secret to the files in the module directory.
 
     .EXAMPLE

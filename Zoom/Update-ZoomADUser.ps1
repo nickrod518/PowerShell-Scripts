@@ -6,7 +6,10 @@ Sync Zoom users with AD.
 Get all enabled users from AD and create a Zoom account if they don't have one. Remove disabled AD users from Zoom.
 #>
 [CmdletBinding(SupportsShouldProcess = $True)]
-Param()
+Param(
+    [Parameter(Mandatory = $false)]
+    [switch]$UpdatePictureFromAD
+)
 
 Import-Module C:\powershell-scripts\Zoom\Zoom.psm1 -Force
 Import-Module ActiveDirectory
@@ -14,8 +17,8 @@ Import-Module ActiveDirectory
 # Get all the enabled users
 $EnabledFilter = { (Enabled -eq 'True') }
 $SearchBase = 'OU=Users,DC=Company,DC=LOCAL'
-$ADUsers = Get-ADUser -SearchBase $SearchBase -Filter $EnabledFilter -Properties telephoneNumber, thumbnailPhoto, mobile |
-    Where-Object { $_.distinguishedName -notlike '*OU=Disabled*'}
+$ADUsers = Get-ADUser -SearchBase $SearchBase -Filter $EnabledFilter -Properties mail, telephoneNumber, thumbnailPhoto, mobile |
+    Where-Object { $_.distinguishedName -notlike '*OU=Disabled*' }
 
 $DefaultGroup = Get-ZoomGroup -Name Default | Select-Object -ExpandProperty group_id
 
@@ -30,9 +33,9 @@ foreach ($User in $ADUsers) {
     }
 
     # Pre-provision Zoom accounts for all selected AD users that don't already exist
-    if ($ZoomUsers.email -notcontains $User.UserPrincipalName) {
+    if ($ZoomUsers.email -notcontains $User.mail) {
         $Params = @{
-            Email = $User.UserPrincipalName
+            Email = $User.mail
             FirstName = $User.GivenName
             LastName = $User.Surname
             License = 'Pro'
@@ -42,14 +45,14 @@ foreach ($User in $ADUsers) {
             if ($ZoomUsers.pmi -notcontains $PhoneNumber) {
                 $Params.Add('Pmi', $PhoneNumber)
             } else {
-                Write-Warning "Unable to set Pmi for $($User.UserPrincipalName), $PhoneNumber already exists."
+                Write-Warning "Unable to set Pmi for $($User.mail), $PhoneNumber already exists."
             }
         }
 
         New-ZoomSSOUser @Params
     # Update existing accounts with their AD info
     } else {
-        $ZoomUser = Get-ZoomUser -Email $User.UserPrincipalName
+        $ZoomUser = Get-ZoomUser -Email $User.mail
 
         $Params = @{ }
 
@@ -65,12 +68,12 @@ foreach ($User in $ADUsers) {
                 if ($ZoomUsers.pmi -notcontains $PhoneNumber) {
                     $Params.Add('Pmi', $PhoneNumber)
                 } else {
-                    Write-Warning "Unable to set Pmi for $($User.UserPrincipalName), $PhoneNumber already exists."
+                    Write-Warning "Unable to set Pmi for $($User.mail), $PhoneNumber already exists."
                 }
             }
         }
-        if ($ZoomUser.vanity_url.Split('/')[-1] -ne $User.UserPrincipalName.Split('@')[0]) {
-            $Params.Add('VanityName', $User.UserPrincipalName.Split('@')[0])
+        if ($ZoomUser.vanity_url.Split('/')[-1] -ne $User.mail.Split('@')[0]) {
+            $Params.Add('VanityName', $User.mail.Split('@')[0])
         }
 
         # Only update Zoom user properties if they have mismatches
@@ -83,13 +86,13 @@ foreach ($User in $ADUsers) {
     }
 
     # Upload user photo if it exists
-    if ($User.thumbnailPhoto) {
-        $ZoomUserId = Get-ZoomUser -Email $User.UserPrincipalName | Select-Object -ExpandProperty id
+    if ($UpdatePictureFromAD -and $User.thumbnailPhoto) {
+        $ZoomUserId = Get-ZoomUser -Email $User.mail | Select-Object -ExpandProperty id
         Set-ZoomUserPicture -Id $ZoomUserId -ByteArray $User.thumbnailPhoto
     }
 }
 
 # Remove any Zoom accounts that don't have matching AD users
 Get-ZoomUser -All | ForEach-Object {
-    if ($ADUsers.UserPrincipalName -notcontains $_.email) { $_ | Remove-ZoomUser }
+    if ($ADUsers.mail -notcontains $_.email) { $_ | Remove-ZoomUser }
 }

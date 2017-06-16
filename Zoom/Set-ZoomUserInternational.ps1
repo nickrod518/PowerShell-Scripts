@@ -11,7 +11,7 @@ Import-Module ActiveDirectory
 
 # Get Zoom international users from AD group
 $ADUsers = Get-ADGroupMember -Identity 'Zoom International Calling Accounts' |
-    Get-ADUser | Select-Object -ExpandProperty UserPrincipalName
+    Get-ADUser | Select-Object -ExpandProperty mail
 
 $GroupInfo = @{}
 foreach ($Group in Get-ZoomGroup -All) {
