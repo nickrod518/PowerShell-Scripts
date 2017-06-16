@@ -347,6 +347,9 @@ function Test-ZoomUserEmail {
     .EXAMPLE
     Test-ZoomUserEmail -Email user@company.com
     Checks to see if account exists for user@company.com.
+
+    .NOTES
+    This will return false if the user has an SSO account but not an Email account.
     #>
     [CmdletBinding()]
     Param(
