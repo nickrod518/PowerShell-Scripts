@@ -7,20 +7,45 @@ Get all enabled users from AD and create a Zoom account if they don't have one. 
 #>
 [CmdletBinding(SupportsShouldProcess = $True)]
 Param(
-    [Parameter(Mandatory = $false)]
-    [switch]$UpdatePictureFromAD
+    [Parameter(
+        Mandatory = $false,
+        ParameterSetName = 'AD'
+    )]
+    [switch]$UpdatePictureFromAD,
+
+    [Parameter(
+        Mandatory = $false,
+        ParameterSetName = 'EO'
+    )]
+    [switch]$UpdatePictureFromEO
 )
 
-Import-Module C:\powershell-scripts\Zoom\Zoom.psm1 -Force
+Import-Module C:\powershell-scripts\Zoom\Zoom.psm1
 Import-Module ActiveDirectory
+if ($UpdatePictureFromEO) {
+    $SessionParameters = @{
+        'ConfigurationName' = 'Microsoft.Exchange'
+        'ConnectionUri' = 'https://outlook.office365.com/powershell-liveid'
+        'Credential' = Get-Credential
+        'Authentication' = 'Basic'
+        'AllowRedirection' = $true
+    }
+
+    try {
+        Import-PSSession (New-PSSession @SessionParameters)
+    } catch {
+        Write-Error "Unable to connect to Exchange Online: $_"
+        exit
+    }
+}
 
 # Get all the enabled users
 $EnabledFilter = { (Enabled -eq 'True') }
-$SearchBase = 'OU=Users,DC=Company,DC=LOCAL'
+$SearchBase = 'OU=Users,DC=COMPANY,DC=LOCAL'
 $ADUsers = Get-ADUser -SearchBase $SearchBase -Filter $EnabledFilter -Properties mail, telephoneNumber, thumbnailPhoto, mobile |
     Where-Object { $_.distinguishedName -notlike '*OU=Disabled*' }
 
-$DefaultGroup = Get-ZoomGroup -Name Default | Select-Object -ExpandProperty group_id
+$DefaultGroup = Get-ZoomGroup -Name DHG | Select-Object -ExpandProperty group_id
 
 $ZoomUsers = Get-ZoomUser -All
 foreach ($User in $ADUsers) {
@@ -90,9 +115,64 @@ foreach ($User in $ADUsers) {
         $ZoomUserId = Get-ZoomUser -Email $User.mail | Select-Object -ExpandProperty id
         Set-ZoomUserPicture -Id $ZoomUserId -ByteArray $User.thumbnailPhoto
     }
+
+    if ($UpdatePictureFromEO) {
+        $PhotoExists = $false
+
+        try {
+            # Get the photo from Exchange Online
+            $Photo = Get-UserPhoto -Identity $ZoomUser.email
+            $PhotoExists = $true
+        } catch {
+            Write-Warning "Exchange Online photo does not exist for $($ZoomUser.email)"
+        }
+
+        if ($PhotoExists) {
+            # Save the photo to a temporary file
+            $FilePath = "$env:TEMP\$($ZoomUser.email).jpg"
+            if (Test-Path $FilePath) { Remove-Item $FilePath }
+            [IO.File]::WriteAllBytes($FilePath, $Photo.PictureData)
+
+            # Load the photo and its properties
+            $Image = New-Object -ComObject Wia.ImageFile
+            $Image.LoadFile($FilePath)
+
+            # Check if the photo is square
+            if ($Image.Height -eq $Image.Width) {
+                Set-ZoomUserPicture -Id $ZoomUser.id -ByteArray $Photo.PictureData
+            } else {
+                Write-Verbose "Photo is not square, cropping..."
+
+                # Create a new crop filter
+                $Filter = New-Object -ComObject Wia.ImageProcess
+                $Filter.Filters.Add($Filter.FilterInfos.Item('Crop').FilterId)
+
+                # Set the height/width to whichever is smallest
+                if ($Image.Height -lt $Image.Width) {
+                    $PixelsToCrop = ($Image.Width - $Image.Height) / 2
+                    $Filter.Filters.Item(1).Properties.Item("Left") = $PixelsToCrop
+                    $Filter.Filters.Item(1).Properties.Item("Right") = $PixelsToCrop
+                } else {
+                    $PixelsToCrop = ($Image.Height - $Image.Width) / 2
+                    $Filter.Filters.Item(1).Properties.Item("Top") = $PixelsToCrop
+                    $Filter.Filters.Item(1).Properties.Item("Bottom") = $PixelsToCrop
+                }
+
+                # Apply the filter and upload the new image
+                $Image = $Filter.Apply($Image)
+                $CroppedFilePath = "$env:TEMP\$($ZoomUser.email)-cropped.jpg"
+                if (Test-Path $CroppedFilePath) { Remove-Item $CroppedFilePath }
+                $Image.SaveFile($CroppedFilePath)
+                Set-ZoomUserPicture -Id $ZoomUser.id -Path $CroppedFilePath
+                Remove-Item $CroppedFilePath
+            }
+
+            Remove-Item $FilePath
+        }
+    }
 }
 
 # Remove any Zoom accounts that don't have matching AD users
 Get-ZoomUser -All | ForEach-Object {
-    if ($ADUsers.mail -notcontains $_.email) { $_ | Remove-ZoomUser }
+    if ($ADUsers.mail -notcontains $_.email) { $_ | Remove-ZoomUser -Permanently }
 }
