@@ -7,13 +7,13 @@ Param(
     [pscredential]$Credential
 )
 
-Import-Module "\\dcsccm03\SMS_DHG\AdminConsole\bin\ConfigurationManager.psd1"
+Import-Module "C:\Powershell-Scripts\ConfigurationManager.psd1"
 Set-Location -Path "$(Get-PSDrive -PSProvider CMSite):\" -ErrorAction Stop
 
 Invoke-Command -Credential $Credential -ComputerName dcsccm03 -ScriptBlock {
     Param($CollectionName)
 
-    Import-Module "\\dcsccm03\SMS_DHG\AdminConsole\bin\ConfigurationManager.psd1"
+    Import-Module "C:\Powershell-Scripts\ConfigurationManager.psd1"
     Set-Location -Path "$(Get-PSDrive -PSProvider CMSite):\" -ErrorAction Stop
 
     Invoke-CMDeploymentSummarization -CollectionName $CollectionName -Verbose
