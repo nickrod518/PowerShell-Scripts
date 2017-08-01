@@ -7,6 +7,15 @@ Get all enabled users from AD and create a Zoom account if they don't have one. 
 #>
 [CmdletBinding(SupportsShouldProcess = $True)]
 Param(
+    [Parameter(Mandatory = $true)]
+    [string]$ADSearchBase,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ADNotLikeFilter,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$ADIncludeDisabledUsers,
+
     [Parameter(
         Mandatory = $false,
         ParameterSetName = 'AD'
@@ -17,35 +26,53 @@ Param(
         Mandatory = $false,
         ParameterSetName = 'EO'
     )]
-    [switch]$UpdatePictureFromEO
+    [switch]$UpdatePictureFromEO,
+
+    [Parameter(
+        Mandatory = $false,
+        ParameterSetName = 'EO'
+    )]
+    [pscredential]$EOCredential,
+
+    [Parameter(Mandatory = $false)]
+    [string]$DefaultZoomGroup,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$EnableChimeForNewUsers
 )
 
 Import-Module C:\powershell-scripts\Zoom\Zoom.psm1
 Import-Module ActiveDirectory
-if ($UpdatePictureFromEO) {
-    $SessionParameters = @{
-        'ConfigurationName' = 'Microsoft.Exchange'
-        'ConnectionUri' = 'https://outlook.office365.com/powershell-liveid'
-        'Credential' = Get-Credential
-        'Authentication' = 'Basic'
-        'AllowRedirection' = $true
-    }
 
-    try {
-        Import-PSSession (New-PSSession @SessionParameters)
-    } catch {
-        Write-Error "Unable to connect to Exchange Online: $_"
-        exit
+if ($UpdatePictureFromEO) {
+    if ((Get-PSSession).ConfigurationName -notcontains 'Microsoft.Exchange') {
+        $SessionParameters = @{
+            'ConfigurationName' = 'Microsoft.Exchange'
+            'ConnectionUri' = 'https://outlook.office365.com/powershell-liveid'
+            'Credential' = $EOCredential
+            'Authentication' = 'Basic'
+            'AllowRedirection' = $true
+        }
+
+        try {
+            Import-PSSession (New-PSSession @SessionParameters)
+        } catch {
+            Write-Error "Unable to connect to Exchange Online: $_"
+            exit
+        }
     }
 }
 
-# Get all the enabled users
-$EnabledFilter = { (Enabled -eq 'True') }
-$SearchBase = 'OU=Users,DC=COMPANY,DC=LOCAL'
-$ADUsers = Get-ADUser -SearchBase $SearchBase -Filter $EnabledFilter -Properties mail, telephoneNumber, thumbnailPhoto, mobile |
-    Where-Object { $_.distinguishedName -notlike '*OU=Disabled*' }
+# Set enabled filter (all by default)
+$EnabledFilter = if ($ADIncludeDisabledUsers) { '*' } else { { (Enabled -eq 'True') } }
+$ADUsers = Get-ADUser -SearchBase $ADSearchBase -Filter $EnabledFilter -Properties mail, telephoneNumber, thumbnailPhoto, mobile |
+    Where-Object { $_.distinguishedName -notlike $ADNotLikeFilter }
 
-$DefaultGroup = Get-ZoomGroup -Name DHG | Select-Object -ExpandProperty group_id
+# Get the default Zoom group we're going to set if specified
+if ($DefaultZoomGroup) {
+    $DefaultGroup = Get-ZoomGroup -Name $DefaultZoomGroup | Select-Object -ExpandProperty group_id
+}
+
 
 $ZoomUsers = Get-ZoomUser -All
 foreach ($User in $ADUsers) {
@@ -64,8 +91,10 @@ foreach ($User in $ADUsers) {
             FirstName = $User.GivenName
             LastName = $User.Surname
             License = 'Pro'
-            GroupId = $DefaultGroup
         }
+
+        if ($DefaultZoomGroup) { $Params.Add('GroupId', $DefaultGroup) }
+
         if ($PhoneNumber) {
             if ($ZoomUsers.pmi -notcontains $PhoneNumber) {
                 $Params.Add('Pmi', $PhoneNumber)
@@ -74,7 +103,14 @@ foreach ($User in $ADUsers) {
             }
         }
 
-        New-ZoomSSOUser @Params
+        if ($EnableChimeForNewUsers) {
+            # Create new user and set chime defaults
+            New-ZoomSSOUser @Params | Set-ZoomUser -EnterExitChime $true
+        } else {
+            # Create new user
+            New-ZoomSSOUser @Params
+        }
+        
     # Update existing accounts with their AD info
     } else {
         $ZoomUser = Get-ZoomUser -Email $User.mail
@@ -117,17 +153,12 @@ foreach ($User in $ADUsers) {
     }
 
     if ($UpdatePictureFromEO) {
-        $PhotoExists = $false
+        $ErrorLogPath = ".\Logs\EOErrors.log"
 
-        try {
-            # Get the photo from Exchange Online
-            $Photo = Get-UserPhoto -Identity $ZoomUser.email
-            $PhotoExists = $true
-        } catch {
-            Write-Warning "Exchange Online photo does not exist for $($ZoomUser.email)"
-        }
-
-        if ($PhotoExists) {
+        # Get the photo from Exchange Online, send all errors to error log
+        $Photo = Get-UserPhoto -Identity $ZoomUser.email 2> $ErrorLogPath
+            
+        if ($Photo.PictureData -ne $null) {
             # Save the photo to a temporary file
             $FilePath = "$env:TEMP\$($ZoomUser.email).jpg"
             if (Test-Path $FilePath) { Remove-Item $FilePath }
@@ -168,6 +199,8 @@ foreach ($User in $ADUsers) {
             }
 
             Remove-Item $FilePath
+        } else {
+            Write-Warning "Error getting Exchange Online photo for $($ZoomUser.email): $((Get-Content $ErrorLogPath)[4])"
         }
     }
 }

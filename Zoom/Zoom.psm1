@@ -874,6 +874,12 @@ function Set-ZoomUser {
     .PARAMETER GroupId
     User Group ID. If set default user group, the parameter’s default value is the default user group.
 
+    .PARAMETER EnterExitChime
+    Enable enter/exit chime.
+
+    .PARAMETER EnterExitChimeType
+    Enter/exit chime type. All (0) means heard by all including host and attendees, HostOnly (1) means heard by host only.
+
     .EXAMPLE
     Get-ZoomUser -Id user@company.com | Set-ZoomUser -License Corp
     Sets Zoom license to Corp on user@company.com's account.
@@ -912,7 +918,14 @@ function Set-ZoomUser {
         [string]$VanityName,
 
         [Parameter(Mandatory = $false)]
-        [string]$GroupId
+        [string]$GroupId,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$EnterExitChime,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('All', 'HostOnly')]
+        [string]$EnterExitChimeType
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/update'
@@ -925,18 +938,27 @@ function Set-ZoomUser {
             if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
             if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
             if ($PSBoundParameters.ContainsKey('License')) {
-                $Type = switch ($License) {
+                $LicenseType = switch ($License) {
                     'Basic' { 1 }
                     'Pro' { 2 }
                     'Corp' { 3 }
                 }
                 
-                $RequestBody.Add('type', $Type)
+                $RequestBody.Add('type', $LicenseType)
             }
             if ($PSBoundParameters.ContainsKey('Pmi')) { $RequestBody.Add('pmi', $Pmi) }
             if ($PSBoundParameters.ContainsKey('EnablePmi')) { $RequestBody.Add('enable_use_pmi', $EnablePmi) }
             if ($PSBoundParameters.ContainsKey('VanityName')) { $RequestBody.Add('vanity_name', $VanityName) }
             if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
+            if ($PSBoundParameters.ContainsKey('EnterExitChime')) { $RequestBody.Add('enable_enter_exit_chime', $EnterExitChime) }
+            if ($PSBoundParameters.ContainsKey('EnterExitChimeType')) {
+                $ChimeType = switch ($EnterExitChimeType) {
+                    'All' { 0 }
+                    'HostOnly' { 1 }
+                }
+                
+                $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
+            }
 
             Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
                 Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
@@ -1075,13 +1097,17 @@ function Set-ZoomUserPicture {
     }
 "@
 
-    $Assemblies = ( 
-        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.1\System.Net.dll',
-        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.1\System.Net.Http.dll'
+    $Assemblies = (
+        # Assemblies can be found downloaded from .NET Framework 4.6.2 Dev Pack
+        # https://www.microsoft.com/en-us/download/confirmation.aspx?id=53321
+        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.2\System.Net.dll',
+        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.2\System.Net.Http.dll'
     )
 
-    # We get errors about this already existing after the first run, so silence them
-    try { Add-Type -TypeDefinition $Source -Language CSharp -ReferencedAssemblies $Assemblies } catch {}
+    # Only load the Zoom.Tools type if it isn't already loaded
+    if (-not ([System.Management.Automation.PSTypeName]'Zoom.Tools').Type) {
+        Add-Type -TypeDefinition $Source -Language CSharp -ReferencedAssemblies $Assemblies
+    }
 
     if ($pscmdlet.ShouldProcess($Id, 'Update Zoom user picture')) {
         if ($PSCmdlet.ParameterSetName -eq 'Path') {
@@ -1124,7 +1150,6 @@ function New-ZoomSSOUser {
     .PARAMETER GroupId
     User Group ID. If set default user group, the parameter’s default value is the default user group.
 
-
     .EXAMPLE
     New-ZoomSSOUser -Email user@company.com -License Pro
     Pre-provisions a Zoom user account for email user@company.com with a Pro license.
@@ -1162,7 +1187,7 @@ function New-ZoomSSOUser {
 
     $Endpoint = 'https://api.zoom.us/v1/user/ssocreate'
 
-    $Type = switch ($License) {
+    $LicenseType = switch ($License) {
         'Basic' { 1 }
         'Pro' { 2 }
         'Corp' { 3 }
@@ -1172,7 +1197,7 @@ function New-ZoomSSOUser {
     $RequestBody.Add('email', $Email)
     if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
     if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
-    $RequestBody.Add('type', $Type)
+    $RequestBody.Add('type', $LicenseType)
     if ($PSBoundParameters.ContainsKey('Pmi')) { $RequestBody.Add('pmi', $Pmi) }
     if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
     
@@ -1201,6 +1226,12 @@ function New-ZoomUser {
 
     .PARAMETER GroupId
     User Group ID. If set default user group, the parameter’s default value is the default user group.
+    
+    .PARAMETER EnterExitChime
+    Enable enter/exit chime.
+
+    .PARAMETER EnterExitChimeType
+    Enter/exit chime type. All (0) means heard by all including host and attendees, HostOnly (1) means heard by host only.
 
     .EXAMPLE
     New-ZoomUser -Email user@company.com -License Pro
@@ -1230,24 +1261,42 @@ function New-ZoomUser {
         [string]$License,
 
         [Parameter(Mandatory = $false)]
-        [string]$GroupId
+        [string]$GroupId,
+    
+        [Parameter(Mandatory = $false)]
+        [bool]$EnterExitChime,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('All', 'HostOnly')]
+        [string]$EnterExitChimeType
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/create'
 
-    $Type = switch ($License) {
+    $LicenseType = switch ($License) {
         'Basic' { 1 }
         'Pro' { 2 }
         'Corp' { 3 }
+    }
+    
+    $ChimeType = switch ($EnterExitChimeType) {
+        'All' { 0 }
+        'HostOnly' { 1 }
     }
 
     foreach ($User in $Email) {
         $RequestBody = Get-ZoomApiAuth
         $RequestBody.Add('email', $User)
-        $RequestBody.Add('type', $Type)
+        $RequestBody.Add('type', $LicenseType)
         if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
         if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
         if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
+        if ($PSBoundParameters.ContainsKey('EnterExitChime')) {
+            $RequestBody.Add('enable_enter_exit_chime', $EnterExitChime)
+        }
+        if ($PSBoundParameters.ContainsKey('EnterExitChimeType')) {
+            $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
+        }
 
         if ($pscmdlet.ShouldProcess($User, 'New Zoom user')) {
             Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
