@@ -136,6 +136,9 @@ foreach ($User in $ADUsers) {
         if ($ZoomUser.vanity_url.Split('/')[-1] -ne $User.mail.Split('@')[0]) {
             $Params.Add('VanityName', $User.mail.Split('@')[0])
         }
+        if ($ZoomUser.disable_feedback -ne $false) {
+            $Params.Add('DisableFeedback', $false)
+        }
 
         # Only update Zoom user properties if they have mismatches
         if ($Params.Count -gt 0) {

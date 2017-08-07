@@ -593,7 +593,10 @@ function Set-ZoomUserAssistant {
     .OUTPUTS
     PSCustomObject
     #>
-    [CmdletBinding(DefaultParameterSetName = 'Id')]
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        DefaultParameterSetName = 'Id'
+    )]
     Param(
         [Parameter(
             Mandatory = $true,
@@ -621,12 +624,16 @@ function Set-ZoomUserAssistant {
 
     if ($PSCmdlet.ParameterSetName -ne 'Id') {
         $RequestBody.Add('id', $Id)
+        $Target = $Id
     } else {
         $RequestBody.Add('host_email', $Email)
+        $Target = $Email
     }
 
-    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
-        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+    if ($pscmdlet.ShouldProcess($Target, 'Set Zoom user assistant')) {
+        Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+    }
 }
 
 function Remove-ZoomUserAssistant {
@@ -880,6 +887,9 @@ function Set-ZoomUser {
     .PARAMETER EnterExitChimeType
     Enter/exit chime type. All (0) means heard by all including host and attendees, HostOnly (1) means heard by host only.
 
+    .PARAMETER DisableFeedback
+    Disable feedback.
+
     .EXAMPLE
     Get-ZoomUser -Id user@company.com | Set-ZoomUser -License Corp
     Sets Zoom license to Corp on user@company.com's account.
@@ -925,7 +935,10 @@ function Set-ZoomUser {
 
         [Parameter(Mandatory = $false)]
         [ValidateSet('All', 'HostOnly')]
-        [string]$EnterExitChimeType
+        [string]$EnterExitChimeType,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$DisableFeedback
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/update'
@@ -956,12 +969,14 @@ function Set-ZoomUser {
                     'All' { 0 }
                     'HostOnly' { 1 }
                 }
-                
                 $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
             }
+            if ($PSBoundParameters.ContainsKey('DisableFeedback')) { $RequestBody.Add('disable_feedback', $DisableFeedback) }
 
-            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
-                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+            if ($pscmdlet.ShouldProcess($User, 'Set Zoom user settings')) {
+                Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                    Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+            }
         }
     }
 }
@@ -1233,6 +1248,9 @@ function New-ZoomUser {
     .PARAMETER EnterExitChimeType
     Enter/exit chime type. All (0) means heard by all including host and attendees, HostOnly (1) means heard by host only.
 
+    .PARAMETER DisableFeedback
+    Disable feedback.
+
     .EXAMPLE
     New-ZoomUser -Email user@company.com -License Pro
     Creates a Zoom user account for email user@company.com with a Pro license.
@@ -1268,7 +1286,10 @@ function New-ZoomUser {
 
         [Parameter(Mandatory = $false)]
         [ValidateSet('All', 'HostOnly')]
-        [string]$EnterExitChimeType
+        [string]$EnterExitChimeType,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$DisableFeedback
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/create'
@@ -1297,6 +1318,7 @@ function New-ZoomUser {
         if ($PSBoundParameters.ContainsKey('EnterExitChimeType')) {
             $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
         }
+        if ($PSBoundParameters.ContainsKey('DisableFeedback')) { $RequestBody.Add('disable_feedback', $DisableFeedback) }
 
         if ($pscmdlet.ShouldProcess($User, 'New Zoom user')) {
             Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
