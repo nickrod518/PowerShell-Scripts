@@ -42,7 +42,7 @@
         [PSCredential]$Credential
     )
 
-    $CatFact = (ConvertFrom-Json (Invoke-WebRequest -Uri 'http://catfacts-api.appspot.com/api/facts')).facts
+    $CatFact = Invoke-RestMethod -Uri 'https://catfact.ninja/fact' | Select-Object -ExpandProperty fact
 
     if ($pscmdlet.ShouldProcess("User: $UserName, Computer: $ComputerName", "Send cat fact, $CatFact")) {
         $ScriptBlock = {
