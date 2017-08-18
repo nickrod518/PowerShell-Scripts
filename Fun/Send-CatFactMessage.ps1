@@ -19,6 +19,8 @@
         The name the user to display the message to. Default is all users.
     .PARAMETER PlayAudio
         Use Windows Speech Synthesizer to output the fact using text to speech.
+    .PARAMETER DisplaySeconds
+        Seconds to display the message on the user's screen. Default is 0, which waits for the user to click a button.
     .PARAMETER Credential
         The credential object to execute the command with.
     #>
@@ -39,6 +41,9 @@
         [switch]$PlayAudio,
 
         [Parameter(Mandatory = $false)]
+        [int]$DisplaySeconds = 0,
+
+        [Parameter(Mandatory = $false)]
         [PSCredential]$Credential
     )
 
@@ -47,14 +52,24 @@
     if ($pscmdlet.ShouldProcess("User: $UserName, Computer: $ComputerName", "Send cat fact, $CatFact")) {
         $ScriptBlock = {
             param (
+                [Parameter(Mandatory = $true)]
                 [string]$UserName,
 
+                [Parameter(Mandatory = $true)]
                 [string]$CatFact,
 
-                [bool]$PlayAudio = $false
+                [Parameter(Mandatory = $true)]
+                [bool]$PlayAudio = $false,
+
+                [Parameter(Mandatory = $true)]
+                [int]$DisplaySeconds
             )
 
-            msg $UserName $CatFact
+            if ($DisplaySeconds -gt 0) {
+                msg $UserName /time:$DisplaySeconds $CatFact
+            } else {
+                msg $UserName $CatFact
+            }
 
             if ($PlayAudio) {
                 Add-Type -AssemblyName System.Speech
@@ -63,15 +78,15 @@
             }
         }
 
-        if ($Credential) {
-            Write-Verbose "Sending cat fact using credential $($Credential.UserName)"
-
-            Invoke-Command -ComputerName $ComputerName -ScriptBlock $ScriptBlock `
-                -ArgumentList $UserName, $CatFact, $PlayAudio -AsJob -Credential $Credential
-        } else {
-            Invoke-Command -ComputerName $ComputerName -ScriptBlock $ScriptBlock `
-                -ArgumentList $UserName, $CatFact, $PlayAudio -AsJob
+        $Params = @{
+            'ComputerName' = $ComputerName
+            'ScriptBlock' = $ScriptBlock
+            'ArgumentList' = @($UserName, $CatFact, $PlayAudio, $DisplaySeconds)
+            'AsJob' = $true
         }
+        if ($Credential) { $Params.Add('Credential', $Credential) }
+        
+        Invoke-Command @Params
 
         Get-Job | Wait-Job | Receive-Job
         Get-Job | Remove-Job
