@@ -69,6 +69,14 @@ try {
     Set-ZoomApiAuth
 }
 
+function Get-ZoomTimeZones {
+    $TimeZones = @{}
+    Import-Csv -Path "$PSScriptRoot\timezones.csv" -Delimiter ',' | ForEach-Object {
+        $TimeZones.Add($_.name, $_.id)
+    }
+    $TimeZones
+}
+
 function Read-ZoomResponse {
     <#
     .SYNOPSIS
@@ -890,6 +898,12 @@ function Set-ZoomUser {
     .PARAMETER DisableFeedback
     Disable feedback.
 
+    .PARAMETER TimeZone
+    The time zone id for user profile. For a list of id's refer to https://zoom.github.io/api/#timezones.
+    
+    .PARAMETER Department
+    Department for user profile, use for reporting.
+
     .EXAMPLE
     Get-ZoomUser -Id user@company.com | Set-ZoomUser -License Corp
     Sets Zoom license to Corp on user@company.com's account.
@@ -938,44 +952,98 @@ function Set-ZoomUser {
         [string]$EnterExitChimeType,
 
         [Parameter(Mandatory = $false)]
-        [bool]$DisableFeedback
+        [bool]$DisableFeedback,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Department
     )
 
-    $Endpoint = 'https://api.zoom.us/v1/user/update'
+    DynamicParam {
+        # Set the dynamic parameters' name
+        $ParameterName = 'TimeZone'
+            
+        # Create the dictionary 
+        $RuntimeParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
 
-    foreach ($User in $Id) {
-        if ($pscmdlet.ShouldProcess($User, 'Update Zoom user info')) {
+        # Create the collection of attributes
+        $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
+            
+        # Create and set the parameters' attributes
+        $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
+        $ParameterAttribute.Mandatory = $false
 
-            $RequestBody = Get-ZoomApiAuth
-            $RequestBody.Add('id', $User)
-            if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
-            if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
-            if ($PSBoundParameters.ContainsKey('License')) {
-                $LicenseType = switch ($License) {
-                    'Basic' { 1 }
-                    'Pro' { 2 }
-                    'Corp' { 3 }
+        # Add the attributes to the attributes collection
+        $AttributeCollection.Add($ParameterAttribute)
+
+        # Generate and set the ValidateSet
+        $ValidatedParams = @()
+        (Get-ZoomTimeZones).GetEnumerator() | ForEach-Object {
+            $ValidatedParams += $_.Key
+            $ValidatedParams += $_.Value
+        }
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($ValidatedParams)
+
+        # Add the ValidateSet to the attributes collection
+        $AttributeCollection.Add($ValidateSetAttribute)
+
+        # Create and return the dynamic parameter
+        $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParameterName, [string], $AttributeCollection)
+        $RuntimeParameterDictionary.Add($ParameterName, $RuntimeParameter)
+        return $RuntimeParameterDictionary
+    }
+
+    begin {
+        $TimeZone = $PSBoundParameters.TimeZone
+    }
+
+    process{
+        $TimeZone = $PSBoundParameters.TimeZone
+        $Endpoint = 'https://api.zoom.us/v1/user/update'
+
+        foreach ($User in $Id) {
+            if ($pscmdlet.ShouldProcess($User, 'Update Zoom user info')) {
+
+                $RequestBody = Get-ZoomApiAuth
+                $RequestBody.Add('id', $User)
+                if ($PSBoundParameters.ContainsKey('FirstName')) { $RequestBody.Add('first_name', $FirstName) }
+                if ($PSBoundParameters.ContainsKey('LastName')) { $RequestBody.Add('last_name', $LastName) }
+                if ($PSBoundParameters.ContainsKey('License')) {
+                    $LicenseType = switch ($License) {
+                        'Basic' { 1 }
+                        'Pro' { 2 }
+                        'Corp' { 3 }
+                    }
+                    
+                    $RequestBody.Add('type', $LicenseType)
                 }
-                
-                $RequestBody.Add('type', $LicenseType)
-            }
-            if ($PSBoundParameters.ContainsKey('Pmi')) { $RequestBody.Add('pmi', $Pmi) }
-            if ($PSBoundParameters.ContainsKey('EnablePmi')) { $RequestBody.Add('enable_use_pmi', $EnablePmi) }
-            if ($PSBoundParameters.ContainsKey('VanityName')) { $RequestBody.Add('vanity_name', $VanityName) }
-            if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
-            if ($PSBoundParameters.ContainsKey('EnterExitChime')) { $RequestBody.Add('enable_enter_exit_chime', $EnterExitChime) }
-            if ($PSBoundParameters.ContainsKey('EnterExitChimeType')) {
-                $ChimeType = switch ($EnterExitChimeType) {
-                    'All' { 0 }
-                    'HostOnly' { 1 }
+                if ($PSBoundParameters.ContainsKey('Pmi')) { $RequestBody.Add('pmi', $Pmi) }
+                if ($PSBoundParameters.ContainsKey('EnablePmi')) { $RequestBody.Add('enable_use_pmi', $EnablePmi) }
+                if ($PSBoundParameters.ContainsKey('VanityName')) { $RequestBody.Add('vanity_name', $VanityName) }
+                if ($PSBoundParameters.ContainsKey('GroupId')) { $RequestBody.Add('group_id', $GroupId) }
+                if ($PSBoundParameters.ContainsKey('EnterExitChime')) {
+                    $RequestBody.Add('enable_enter_exit_chime', $EnterExitChime)
                 }
-                $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
-            }
-            if ($PSBoundParameters.ContainsKey('DisableFeedback')) { $RequestBody.Add('disable_feedback', $DisableFeedback) }
+                if ($PSBoundParameters.ContainsKey('EnterExitChimeType')) {
+                    $ChimeType = switch ($EnterExitChimeType) {
+                        'All' { 0 }
+                        'HostOnly' { 1 }
+                    }
+                    $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
+                }
+                if ($PSBoundParameters.ContainsKey('DisableFeedback')) {
+                    $RequestBody.Add('disable_feedback', $DisableFeedback)
+                }
+                if ($PSBoundParameters.ContainsKey('TimeZone')) {
+                    $TimeZones = Get-ZoomTimeZones
+                    if ($TimeZones.Contains($TimeZone)) { $TimeZone = $TimeZones.$TimeZone }
+                    $RequestBody.Add('timezone', $TimeZone)
+                }
+                if ($PSBoundParameters.ContainsKey('Department')) { $RequestBody.Add('dept', $Department) }
 
-            if ($pscmdlet.ShouldProcess($User, 'Set Zoom user settings')) {
-                Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
-                    Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+                if ($pscmdlet.ShouldProcess($User, 'Set Zoom user settings')) {
+                    Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                        Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+                }
             }
         }
     }
@@ -1251,6 +1319,9 @@ function New-ZoomUser {
     .PARAMETER DisableFeedback
     Disable feedback.
 
+    .PARAMETER Department
+    Department for user profile, use for reporting.
+
     .EXAMPLE
     New-ZoomUser -Email user@company.com -License Pro
     Creates a Zoom user account for email user@company.com with a Pro license.
@@ -1289,7 +1360,10 @@ function New-ZoomUser {
         [string]$EnterExitChimeType,
 
         [Parameter(Mandatory = $false)]
-        [bool]$DisableFeedback
+        [bool]$DisableFeedback,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Department
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/create'
@@ -1319,6 +1393,7 @@ function New-ZoomUser {
             $RequestBody.Add('option_enter_exit_chime_type', $ChimeType)
         }
         if ($PSBoundParameters.ContainsKey('DisableFeedback')) { $RequestBody.Add('disable_feedback', $DisableFeedback) }
+        if ($PSBoundParameters.ContainsKey('Department')) { $RequestBody.Add('dept', $Department) }
 
         if ($pscmdlet.ShouldProcess($User, 'New Zoom user')) {
             Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
