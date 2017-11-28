@@ -1,3 +1,6 @@
+$ZoomApiKey = ''
+$ZoomApiSecret = ''
+
 function Get-ZoomApiAuth {
     <#
     .SYNOPSIS
@@ -12,69 +15,170 @@ function Get-ZoomApiAuth {
     [CmdletBinding()]
     Param()
 
-    @{
-        'api_key' = Get-Content -Path "$PSScriptRoot\api_key"
-        'api_secret' = Get-Content -Path "$PSScriptRoot\api_secret"
-    }
-}
-
-function Set-ZoomApiAuth {
-    <#
-    .SYNOPSIS
-    Set the Zoom Api key/secret to the files in the same directory as the module.
-
-    .PARAMETER Key
-    Optional, sets a new Api key.
-    
-    .PARAMETER Secret
-    Optional, sets a new Api secret.
-
-    .EXAMPLE
-    Set-ZoomApi -Key 'mysupersecretapikey' -Secret 'mysupersecretapisecret'
-    Sets your Zoom api key and secret to the files in the module directory.
-
-    .EXAMPLE
-    Set-ZoomApi
-    User is prompted to enter both key and secret.
-
-    .OUTPUTS
-    Creates/overrides api_key and api_secret files in module directory.
-    #>
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $false)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Key,
-
-        [Parameter(Mandatory = $false)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Secret
-    )
-
-    if ($PSBoundParameters.Keys.Count -eq 0) {
-        Read-Host 'Enter your Zoom Api key' | Set-Content -Path "$PSScriptRoot\api_key"
-        Read-Host 'Enter your Zoom Api secret' | Set-Content -Path "$PSScriptRoot\api_secret"
-    } else {
-        switch ($PSBoundParameters.Keys) {
-            'Key' { $Key | Set-Content -Path "$PSScriptRoot\api_key" }
-            'Secret' { $Secret | Set-Content -Path "$PSScriptRoot\api_secret" }
+    try {
+        if (-not $Global:ZoomApiKey) {
+            $Global:ZoomApiKey = if ($PSPrivateMetadata.JobId) {
+                Get-AutomationVariable -Name ZoomApiKey
+            } else {
+                Read-Host 'Enter Zoom Api key'
+            }
         }
-    }
-}
 
-# Verify we can get the api key and secret before continuing to load the module
-try {
-    Get-ZoomApiAuth -ErrorAction Stop
-} catch {
-    Set-ZoomApiAuth
+        if (-not $Global:ZoomApiSecret) {
+            $Global:ZoomApiSecret = if ($PSPrivateMetadata.JobId) {
+                Get-AutomationVariable -Name ZoomApiSecret
+            } else {
+                Read-Host 'Enter Zoom Api secret'
+            }
+        }
+
+        @{
+            'api_key' = $Global:ZoomApiKey
+            'api_secret' = $Global:ZoomApiSecret
+        }
+    } catch {
+        Write-Error "Problem getting Zoom Api Authorization variables:`n$_"
+    }
 }
 
 function Get-ZoomTimeZones {
-    $TimeZones = @{}
-    Import-Csv -Path "$PSScriptRoot\timezones.csv" -Delimiter ',' | ForEach-Object {
-        $TimeZones.Add($_.name, $_.id)
+    @{
+        'Pacific/Midway' = '"Midway Island, Samoa"'
+        'Pacific/Pago_Pago' = 'Pago Pago'
+        'Pacific/Honolulu' = 'Hawaii'
+        'America/Anchorage' = 'Alaska'
+        'America/Vancouver' = 'Vancouver'
+        'America/Los_Angeles' = 'Pacific Time (US and Canada)'
+        'America/Tijuana' = 'Tijuana'
+        'America/Edmonton' = 'Edmonton'
+        'America/Denver' = 'Mountain Time (US and Canada)'
+        'America/Phoenix' = 'Arizona'
+        'America/Mazatlan' = 'Mazatlan'
+        'America/Winnipeg' = 'Winnipeg'
+        'America/Regina' = 'Saskatchewan'
+        'America/Chicago' = 'Central Time (US and Canada)'
+        'America/Mexico_City' = 'Mexico City'
+        'America/Guatemala' = 'Guatemala'
+        'America/El_Salvador' = 'El Salvador'
+        'America/Managua' = 'Managua'
+        'America/Costa_Rica' = 'Costa Rica'
+        'America/Montreal' = 'Montreal'
+        'America/New_York' = 'Eastern Time (US and Canada)'
+        'America/Indianapolis' = 'Indiana (East)'
+        'America/Panama' = 'Panama'
+        'America/Bogota' = 'Bogota'
+        'America/Lima' = 'Lima'
+        'America/Halifax' = 'Halifax'
+        'America/Puerto_Rico' = 'Puerto Rico'
+        'America/Caracas' = 'Caracas'
+        'America/Santiago' = 'Santiago'
+        'America/St_Johns' = 'Newfoundland and Labrador'
+        'America/Montevideo' = 'Montevideo'
+        'America/Araguaina' = 'Brasilia'
+        'America/Argentina/Buenos_Aires' = '"Buenos Aires, Georgetown"'
+        'America/Godthab' = 'Greenland'
+        'America/Sao_Paulo' = 'Sao Paulo'
+        'Atlantic/Azores' = 'Azores'
+        'Canada/Atlantic' = 'Atlantic Time (Canada)'
+        'Atlantic/Cape_Verde' = 'Cape Verde Islands'
+        'UTC' = 'Universal Time UTC'
+        'Etc/Greenwich' = 'Greenwich Mean Time'
+        'Europe/Belgrade' = '"Belgrade, Bratislava, Ljubljana"'
+        'CET' = '"Sarajevo, Skopje, Zagreb"'
+        'Atlantic/Reykjavik' = 'Reykjavik'
+        'Europe/Dublin' = 'Dublin'
+        'Europe/London' = 'London'
+        'Europe/Lisbon' = 'Lisbon'
+        'Africa/Casablanca' = 'Casablanca'
+        'Africa/Nouakchott' = 'Nouakchott'
+        'Europe/Oslo' = 'Oslo'
+        'Europe/Copenhagen' = 'Copenhagen'
+        'Europe/Brussels' = 'Brussels'
+        'Europe/Berlin' = '"Amsterdam, Berlin, Rome, Stockholm, Vienna"'
+        'Europe/Helsinki' = 'Helsinki'
+        'Europe/Amsterdam' = 'Amsterdam'
+        'Europe/Rome' = 'Rome'
+        'Europe/Stockholm' = 'Stockholm'
+        'Europe/Vienna' = 'Vienna'
+        'Europe/Luxembourg' = 'Luxembourg'
+        'Europe/Paris' = 'Paris'
+        'Europe/Zurich' = 'Zurich'
+        'Europe/Madrid' = 'Madrid'
+        'Africa/Bangui' = 'West Central Africa'
+        'Africa/Algiers' = 'Algiers'
+        'Africa/Tunis' = 'Tunis'
+        'Africa/Harare' = '"Harare, Pretoria"'
+        'Africa/Nairobi' = 'Nairobi'
+        'Europe/Warsaw' = 'Warsaw'
+        'Europe/Prague' = 'Prague Bratislava'
+        'Europe/Budapest' = 'Budapest'
+        'Europe/Sofia' = 'Sofia'
+        'Europe/Istanbul' = 'Istanbul'
+        'Europe/Athens' = 'Athens'
+        'Europe/Bucharest' = 'Bucharest'
+        'Asia/Nicosia' = 'Nicosia'
+        'Asia/Beirut' = 'Beirut'
+        'Asia/Damascus' = 'Damascus'
+        'Asia/Jerusalem' = 'Jerusalem'
+        'Asia/Amman' = 'Amman'
+        'Africa/Tripoli' = 'Tripoli'
+        'Africa/Cairo' = 'Cairo'
+        'Africa/Johannesburg' = 'Johannesburg'
+        'Europe/Moscow' = 'Moscow'
+        'Asia/Baghdad' = 'Baghdad'
+        'Asia/Kuwait' = 'Kuwait'
+        'Asia/Riyadh' = 'Riyadh'
+        'Asia/Bahrain' = 'Bahrain'
+        'Asia/Qatar' = 'Qatar'
+        'Asia/Aden' = 'Aden'
+        'Asia/Tehran' = 'Tehran'
+        'Africa/Khartoum' = 'Khartoum'
+        'Africa/Djibouti' = 'Djibouti'
+        'Africa/Mogadishu' = 'Mogadishu'
+        'Asia/Dubai' = 'Dubai'
+        'Asia/Muscat' = 'Muscat'
+        'Asia/Baku' = '"Baku, Tbilisi, Yerevan"'
+        'Asia/Kabul' = 'Kabul'
+        'Asia/Yekaterinburg' = 'Yekaterinburg'
+        'Asia/Tashkent' = '"Islamabad, Karachi, Tashkent"'
+        'Asia/Calcutta' = 'India'
+        'Asia/Kathmandu' = 'Kathmandu'
+        'Asia/Novosibirsk' = 'Novosibirsk'
+        'Asia/Almaty' = 'Almaty'
+        'Asia/Dacca' = 'Dacca'
+        'Asia/Krasnoyarsk' = 'Krasnoyarsk'
+        'Asia/Dhaka' = '"Astana, Dhaka"'
+        'Asia/Bangkok' = 'Bangkok'
+        'Asia/Saigon' = 'Vietnam'
+        'Asia/Jakarta' = 'Jakarta'
+        'Asia/Irkutsk' = '"Irkutsk, Ulaanbaatar"'
+        'Asia/Shanghai' = '"Beijing, Shanghai"'
+        'Asia/Hong_Kong' = 'Hong Kong'
+        'Asia/Taipei' = 'Taipei'
+        'Asia/Kuala_Lumpur' = 'Kuala Lumpur'
+        'Asia/Singapore' = 'Singapore'
+        'Australia/Perth' = 'Perth'
+        'Asia/Yakutsk' = 'Yakutsk'
+        'Asia/Seoul' = 'Seoul'
+        'Asia/Tokyo' = '"Osaka, Sapporo, Tokyo"'
+        'Australia/Darwin' = 'Darwin'
+        'Australia/Adelaide' = 'Adelaide'
+        'Asia/Vladivostok' = 'Vladivostok'
+        'Pacific/Port_Moresby' = '"Guam, Port Moresby"'
+        'Australia/Brisbane' = 'Brisbane'
+        'Australia/Sydney' = '"Canberra, Melbourne, Sydney"'
+        'Australia/Hobart' = 'Hobart'
+        'Asia/Magadan' = 'Magadan'
+        'SST' = 'Solomon Islands'
+        'Pacific/Noumea' = 'New Caledonia'
+        'Asia/Kamchatka' = 'Kamchatka'
+        'Pacific/Fiji' = '"Fiji Islands, Marshall Islands"'
+        'Pacific/Auckland' = '"Auckland, Wellington"'
+        'Asia/Kolkata' = '"Mumbai, Kolkata, New Delhi"'
+        'Europe/Kiev' = 'Kiev'
+        'America/Tegucigalpa' = 'Tegucigalpa'
+        'Pacific/Apia' = 'Independent State of Samoa'
     }
-    $TimeZones
 }
 
 function Read-ZoomResponse {
@@ -90,6 +194,9 @@ function Read-ZoomResponse {
 
     .PARAMETER Endpoint
     Api endpoint Url that was called.
+
+    .PARAMETER RetryOnRequestLimitReached
+    If the Api request limit is reached, retry once after 1 second.
 
     .EXAMPLE
     Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
@@ -107,7 +214,10 @@ function Read-ZoomResponse {
         [hashtable]$RequestBody,
 
         [Parameter(Mandatory = $true)]
-        [string]$Endpoint
+        [string]$Endpoint,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$RetryOnRequestLimitReached = $true
     )
 
     $ApiCallInfo = "Api Endpoint: $Endpoint`n"
@@ -115,6 +225,14 @@ function Read-ZoomResponse {
 
     if ($Response.PSObject.Properties.Name -match 'error') {
         Write-Error -Message "$($Response.error.message)`n$ApiCallInfo" -ErrorId $Response.error.code -Category InvalidOperation
+
+        if ($RetryOnRequestLimitReached -and $Response.error.code -eq 403) {
+            Write-Warning "Retrying in one second..."
+            Start-Sleep -Seconds 1
+
+            Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
+                Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
+        }
     } else {
         Write-Verbose "$($Response.error.message)`nApi call body:$($RequestBody | Out-String)"
         $Response
@@ -196,6 +314,8 @@ function Get-ZoomUser {
             Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
                 Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
                 Select-Object -ExpandProperty users
+
+            Start-Sleep -Milliseconds 500
         }
     } elseif ($PSCmdlet.ParameterSetName -eq 'Email') {
         $Endpoint = 'https://api.zoom.us/v1/user/getbyemail'
@@ -257,6 +377,8 @@ function Get-ZoomPendingUser {
         $Users += Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
             Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
             Select-Object -ExpandProperty users
+                
+        Start-Sleep -Milliseconds 500
     }
 
     $Users
@@ -526,6 +648,8 @@ function Get-ZoomMeeting {
             $Meetings += Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
                 Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
                 Select-Object -ExpandProperty meetings
+                
+            Start-Sleep -Milliseconds 500
         }
         
         $Meetings
@@ -855,6 +979,8 @@ function Get-ZoomGroupMember {
         $Users += Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post |
             Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint |
             Select-Object -ExpandProperty members
+            
+        Start-Sleep -Milliseconds 500
     }
 
     $Users
@@ -957,7 +1083,7 @@ function Set-ZoomUser {
         [Parameter(Mandatory = $false)]
         [string]$Department
     )
-
+<#
     DynamicParam {
         # Set the dynamic parameters' name
         $ParameterName = 'TimeZone'
@@ -995,8 +1121,8 @@ function Set-ZoomUser {
     begin {
         $TimeZone = $PSBoundParameters.TimeZone
     }
-
-    process{
+#>
+    process {
         $TimeZone = $PSBoundParameters.TimeZone
         $Endpoint = 'https://api.zoom.us/v1/user/update'
 
@@ -1033,11 +1159,11 @@ function Set-ZoomUser {
                 if ($PSBoundParameters.ContainsKey('DisableFeedback')) {
                     $RequestBody.Add('disable_feedback', $DisableFeedback)
                 }
-                if ($PSBoundParameters.ContainsKey('TimeZone')) {
+                <#if ($PSBoundParameters.ContainsKey('TimeZone')) {
                     $TimeZones = Get-ZoomTimeZones
                     if ($TimeZones.Contains($TimeZone)) { $TimeZone = $TimeZones.$TimeZone }
                     $RequestBody.Add('timezone', $TimeZone)
-                }
+                }#>
                 if ($PSBoundParameters.ContainsKey('Department')) { $RequestBody.Add('dept', $Department) }
 
                 if ($pscmdlet.ShouldProcess($User, 'Set Zoom user settings')) {
@@ -1093,6 +1219,8 @@ function Set-ZoomUserPicture {
 
         [Parameter(
             Mandatory = $true,
+			ValueFromPipeline = $true,
+			ValueFromPipelineByPropertyName = $true,
             ParameterSetName = 'Path'
 		)]
         [ValidateScript({ Test-Path $_ -PathType Leaf })]
@@ -1103,110 +1231,76 @@ function Set-ZoomUserPicture {
             Mandatory = $true,
 			ValueFromPipeline = $true,
 			ValueFromPipelineByPropertyName = $true,
-            ParameterSetName = 'Id'
+            ParameterSetName = 'ByteArray'
 		)]
         [ValidateNotNullOrEmpty()]
-        [byte[]]$ByteArray
+        [byte[]]$ByteArray,
+
+        [Parameter(
+            Mandatory = $true,
+			ValueFromPipeline = $true,
+			ValueFromPipelineByPropertyName = $true,
+            ParameterSetName = 'Binary'
+		)]
+        [ValidateNotNullOrEmpty()]
+        $Binary
     )
 
     $Endpoint = 'https://api.zoom.us/v1/user/uploadpicture'
-    $ApiAuth = Get-ZoomApiAuth
 
-    $Boundary = [guid]::NewGuid()
-
-    $Source = @"
-    using System;
-    using System.IO;
-    using System.Collections.Generic;
-    using System.Threading;
-    using System.Threading.Tasks;
-    using System.Net;
-    using System.Net.Http;
-    using System.Net.Http.Headers;
-
-    namespace Zoom
-    {
-        public static class Tools
-        {
-            public static string UploadUserPicture(string Id, byte[] byteArray, string fileName)
-            {
-                Uri webService = new Uri(@"$Endpoint");
-                HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, webService);
-                requestMessage.Headers.ExpectContinue = false;
-
-                MultipartFormDataContent multiPartContent = new MultipartFormDataContent("$Boundary");
-
-                HttpContent apiKeyContent = new StringContent(@"$($ApiAuth.api_key)");
-                multiPartContent.Add(apiKeyContent, "api_key");
-
-                HttpContent apiSecretContent = new StringContent(@"$($ApiAuth.api_secret)");
-                multiPartContent.Add(apiSecretContent, "api_secret");
-
-                HttpContent idContent = new StringContent(Id);
-                multiPartContent.Add(idContent, "id");
-
-                ByteArrayContent byteArrayContent = new ByteArrayContent(byteArray);
-                byteArrayContent.Headers.Add("Content-Type", "application/octet-stream");
-                multiPartContent.Add(byteArrayContent, "pic_file", fileName);
-
-                requestMessage.Content = multiPartContent;
-    
-                HttpClient httpClient = new HttpClient();
-                httpClient.Timeout = new TimeSpan(0, 2, 0);
-                try
-                {
-                    Task<HttpResponseMessage> httpRequest = httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseContentRead, CancellationToken.None);
-                    HttpResponseMessage httpResponse = httpRequest.Result;
-                    HttpStatusCode statusCode = httpResponse.StatusCode;
-                    HttpContent responseContent = httpResponse.Content;
-    
-                    if (responseContent != null)
-                    {
-                        Task<String> stringContentsTask = responseContent.ReadAsStringAsync();
-                        String stringContents = stringContentsTask.Result;
-                        return stringContents;
-                    }
-                    else
-                    {
-                        return "No response.";
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return ex.Message;
-                }
-            }
-        }
+    if ($PSCmdlet.ParameterSetName -eq 'Path') {
+        $FileName = $Path.Split('\')[-1]
+        $ByteArray = Get-Content -Path $Path -Encoding Byte
+    } else {
+        $FileName = 'ProfilePicture.jpg'
     }
-"@
 
-    $Assemblies = (
-        # Assemblies can be found downloaded from .NET Framework 4.6.2 Dev Pack
-        # https://www.microsoft.com/en-us/download/confirmation.aspx?id=53321
-        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.2\System.Net.dll',
-        'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6.2\System.Net.Http.dll'
-    )
-
-    # Only load the Zoom.Tools type if it isn't already loaded
-    if (-not ([System.Management.Automation.PSTypeName]'Zoom.Tools').Type) {
-        Add-Type -TypeDefinition $Source -Language CSharp -ReferencedAssemblies $Assemblies
+    if (-not $Binary) {
+        $encoding = [System.Text.Encoding]::GetEncoding('iso-8859-1')
+        $encodedFile = $encoding.GetString($ByteArray)
+    } else {
+        $encodedFile = $Binary
     }
+
+    $newLine = "`r`n"
+    $boundary = [guid]::NewGuid()
+    
+    $RequestBody = (
+        "--$boundary",
+        "Content-Type: text/plain; charset=utf-8",
+        "Content-Disposition: form-data; name=api_key$newLine",
+        (Get-ZoomApiAuth).api_key,
+    
+        "--$boundary",
+        "Content-Type: text/plain; charset=utf-8",
+        "Content-Disposition: form-data; name=api_secret$newLine",
+        (Get-ZoomApiAuth).api_secret,
+    
+        "--$boundary",
+        "Content-Type: text/plain; charset=utf-8",
+        "Content-Disposition: form-data; name=id$newLine",
+        $Id,
+    
+        "--$boundary",
+        "Content-Type: application/octet-stream",
+        "Content-Disposition: form-data; name=pic_file; filename=$FileName; filename*=utf-8''$FileName$newLine",
+        $encodedFile,
+
+        "--$boundary--$newLine"
+     ) -join $newLine
 
     if ($pscmdlet.ShouldProcess($Id, 'Update Zoom user picture')) {
-        if ($PSCmdlet.ParameterSetName -eq 'Path') {
-            $ByteArray = Get-Content -Path $Path -Encoding Byte
-            $FileName = $Path.Split('\')[-1]
+        $response = Invoke-RestMethod -Uri $Endpoint -Body $RequestBody -Method Post -ContentType "multipart/form-data; boundary=`"$boundary`""
+
+        $ApiCallInfo = "Api Endpoint: $Endpoint`n"
+        $ApiCallInfo += "Api call body:$($RequestBody | Out-String)"
+    
+        if ($response.PSObject.Properties.Name -match 'error') {
+            Write-Error -Message "$($response.error.message)`n$ApiCallInfo" -ErrorId $response.error.code -Category InvalidOperation
         } else {
-            $FileName = 'ProfilePicture.jpg'
+            Write-Verbose "$($response.error.message)`nApi call body:$($RequestBody | Out-String)"
+            $response
         }
-
-        $RequestBody = Get-ZoomApiAuth
-        $RequestBody.Add('id', $Id)
-        $RequestBody.Add('file_name', $FileName)
-        $RequestBody.Add('byte_array', $ByteArray)
-
-        [Zoom.Tools]::UploadUserPicture($Id, $ByteArray, $FileName) | ConvertFrom-Json |
-            Read-ZoomResponse -RequestBody $RequestBody -Endpoint $Endpoint
     }
 }
 
