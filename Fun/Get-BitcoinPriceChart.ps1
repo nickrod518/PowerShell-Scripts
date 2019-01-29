@@ -1,6 +1,6 @@
 $PriceData = [System.Collections.Specialized.OrderedDictionary]@{}
 
-$Data = (Invoke-RestMethod -Method Get -Uri 'https://api.coindesk.com/v1/bpi/historical/close.json' `
+$Data = (Invoke-RestMethod -Method Get -Uri 'http://api.coindesk.com/v1/bpi/historical/close.json' `
     -ContentType 'application/json').bpi | Out-String
 
 $Data.Trim() -split "`r`n" | ForEach-Object {
@@ -38,10 +38,10 @@ $Chart.Series['Price'].ChartArea = "ChartArea1"
 $Chart.Series['Price'].Color = "#62B5CC"
 $Chart.Series['Price'].Points.DataBindXY($PriceData.Keys, $PriceData.Values)
 
-# Display the chart on a form 
+# Display the chart on a form
 $Chart.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor
-    [System.Windows.Forms.AnchorStyles]::Right -bor 
-    [System.Windows.Forms.AnchorStyles]::Top -bor 
+    [System.Windows.Forms.AnchorStyles]::Right -bor
+    [System.Windows.Forms.AnchorStyles]::Top -bor
     [System.Windows.Forms.AnchorStyles]::Left
 $Form = New-Object Windows.Forms.Form
 $Form.Text = "Bitcoin Price Chart"
