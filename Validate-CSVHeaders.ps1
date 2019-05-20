@@ -8,7 +8,7 @@ function Validate-CSVHeaders ($correctHeaders) {
     [ValidateSet('Yes','No')]$validateHeaders = Read-Host "Validate headers?"
     if ($validateHeaders -eq 'Yes') {
 	    # put all the headers into a comma separated array
-	    $headers = (Get-Content $fileName | Select-Object -First 1).Split(",")
+	    $headers = (Get-Content $fileName -TotalCount 1).Split(",")
 	    for ($i = 0; $i -lt $headers.Count; $i++) {
 		
 		    # trim any leading white space and compare the headers
