@@ -36,7 +36,7 @@ function Retire-CMApplication {
 
             # remove content from all dp's and dpg's
             Write-Host -NoNewline "Removing content from all distribution points"
-            $DPs = Get-CMDistributionPoint
+            $DPs = Get-CMDistributionPoint -AllSite
             foreach ($DP in $DPs) {
                 Write-Host -NoNewline "."
                 try {
