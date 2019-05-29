@@ -6,7 +6,7 @@ function Retire-CMApplication {
     )
 
     # import cm module
-    Import-Module 'C:\Program Files (x86)\Microsoft Configuration Manager\AdminConsole\bin\ConfigurationManager.psd1'
+    Import-Module ($Env:SMS_ADMIN_UI_PATH.Substring(0,$Env:SMS_ADMIN_UI_PATH.Length-5) + '\ConfigurationManager.psd1')
 
     # change to the cm site drive
     $PSD = Get-PSDrive -PSProvider CMSite
