@@ -18,9 +18,9 @@ function Retire-CMApplication {
             Write-Host "So long, $RetiringApp!"
 
             # checking retired status, setting to active so that we can make changes
-            if ($RetiringApp.IsExpired) {
-                $RetiringAppWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = '$RetiringApp'"
-                $RetiringAppWMI.SetIsExpired($false) | Out-Null
+            if ($RetiringApp.IsExpired)
+            {
+                Resume-CMApplication -Name "$RetiringAppName"
                 Write-Host "Setting Status of $RetiringAppName to Active so that changes can be made."
             }
 
