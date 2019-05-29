@@ -37,11 +37,16 @@ function Retire-CMApplication {
             # remove content from all dp's and dpg's
             Write-Host -NoNewline "Removing content from all distribution points"
             $DPs = Get-CMDistributionPoint -AllSite
-            foreach ($DP in $DPs) {
+            foreach ($DP in $DPs)
+            {
+                $dpNetworkOSPath = $dp.NetworkOSPath #TODO: unify 2 variables
+                $dpName = ($dp.NetworkOSPath).Substring(2,$dpNetworkOSPath.Length-2)
                 Write-Host -NoNewline "."
-                try {
-                    Remove-CMContentDistribution -Application $RetiringApp -DistributionPointName ($DP).NetworkOSPath -Force -EA SilentlyContinue
-                } catch { }
+                try
+                {
+                    Remove-CMContentDistribution -ApplicationName "$RetiringApp" -DistributionPointName $dpName -Force -EA SilentlyContinue
+                }
+                catch { }
             }
             Write-Host
             Write-Host -NoNewline "Removing content from all distribution point groups"
