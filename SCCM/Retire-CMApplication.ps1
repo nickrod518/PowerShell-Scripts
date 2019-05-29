@@ -13,15 +13,15 @@ function Retire-CMApplication {
     cd "$($PSD):"
 
     # for each provided app name, remove deployments, rename, and retire
-    foreach ($app in $RetiringApps) {
-        if ($RetiringApp = Get-CMApplication -Name $app) {
-            Write-Host "So long, $app!"
+    foreach ($RetiringApp in $RetiringApps) {
+        if ($RetiringApp = Get-CMApplication -Name $RetiringApp) {
+            Write-Host "So long, $RetiringApp!"
 
             # checking retired status, setting to active so that we can make changes
             if ($RetiringApp.IsExpired) {
-                $appWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = '$app'"
-                $appWMI.SetIsExpired($false) | Out-Null
-                Write-Host "Setting Status of $app to Active so that changes can be made."
+                $RetiringAppWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = '$RetiringApp'"
+                $RetiringAppWMI.SetIsExpired($false) | Out-Null
+                Write-Host "Setting Status of $RetiringApp to Active so that changes can be made."
             }
 
             $oldDeploys = Get-CMDeployment -SoftwareName $RetiringApp.LocalizedDisplayName
@@ -29,9 +29,9 @@ function Retire-CMApplication {
             # remove all deployments for the app
             if ($oldDeploys) {
                 $oldDeploys | ForEach-Object {
-                    Remove-CMDeployment -ApplicationName $app -DeploymentId $_.DeploymentID -Force
+                    Remove-CMDeployment -ApplicationName $RetiringApp -DeploymentId $_.DeploymentID -Force
                 }
-                Write-Host "Removed $($oldDeploys.Count) deployments of $app."
+                Write-Host "Removed $($oldDeploys.Count) deployments of $RetiringApp."
             }
 
             # remove content from all dp's and dpg's
@@ -54,17 +54,17 @@ function Retire-CMApplication {
             foreach ($DPG in $DPGs) {
                 Write-Host -NoNewline "."
                 try {
-                    Remove-CMContentDistribution -Application $RetiringApp -DistributionPointGroupName ($DPG).Name -Force -EA SilentlyContinue
+                    Remove-CMContentDistribution -ApplicationName $RetiringApp -DistributionPointGroupName ($DPG).Name -Force -EA SilentlyContinue
                 } catch { }
             }
             Write-Host
 
             # rename the app
-            $app = $app.Replace('Retired-', '')
+            $RetiringApp = $RetiringApp.Replace('Retired-', '')
             try {
-                Set-CMApplication -Name $app -NewName "Retired-$app"
+                Set-CMApplication -Name $RetiringApp -NewName "Retired-$RetiringApp"
             } catch { }
-            Write-Host "Renamed to Retired-$app."
+            Write-Host "Renamed to Retired-$RetiringApp."
 
             # move the app according to category
             if ($RetiringApp.LocalizedCategoryInstanceNames -eq "Mac") {
@@ -77,8 +77,8 @@ function Retire-CMApplication {
 
             # retire the app
             if (!$RetiringApp.IsExpired) {
-                $appWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = 'Retired-$app'"
-                $appWMI.SetIsExpired($true) | Out-Null
+                $RetiringAppWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = 'Retired-$RetiringApp'"
+                $RetiringAppWMI.SetIsExpired($true) | Out-Null
                 Write-Host "Set status to Retired."
             } else {
                 Write-Host "Status was already set to Retired."
@@ -90,7 +90,7 @@ function Retire-CMApplication {
             Write-Host "Don't forget to delete the source files from $loc."
 
         } else {
-            Write-Host "$app was not found. No actions performed."
+            Write-Host "$RetiringApp was not found. No actions performed."
         }
     }
 }
