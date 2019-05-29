@@ -43,7 +43,6 @@ function Retire-CMApplication {
             $DPs = Get-CMDistributionPoint -AllSite
             foreach ($DP in $DPs)
             {
-                #$dpNetworkOSPath = $dp.NetworkOSPath #TODO: unify 2 variables
                 $dpName = ($dp.NetworkOSPath).Substring(2)
 
                 
