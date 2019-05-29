@@ -140,7 +140,7 @@ function Create-UtilityForm {
 
 try {
     # make sure we have access to CM commands before we continue
-    Import-Module 'E:\SCCM\AdminConsole\bin\ConfigurationManager.psd1'
+    Import-Module ($Env:SMS_ADMIN_UI_PATH.Substring(0,$Env:SMS_ADMIN_UI_PATH.Length-5) + '\ConfigurationManager.psd1')
     Set-Location -Path "$(Get-PSDrive -PSProvider CMSite):\" -ErrorAction Stop
     Create-UtilityForm
 } catch {
