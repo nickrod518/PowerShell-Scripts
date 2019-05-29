@@ -2,7 +2,9 @@ function Retire-CMApplication {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        $RetiringApps = @()
+        $RetiringApps = @(),
+        [Parameter(Mandatory = $false)]
+        $rename = $false
     )
 
     # import cm module
@@ -61,6 +63,7 @@ function Retire-CMApplication {
 
             # rename the app
             $RetiringAppName = $RetiringApp.Replace('Retired-', '')
+            If ($rename){
             try {
                 Set-CMApplication -Name $RetiringAppName -NewName "Retired-$RetiringApp"
             } catch { }
@@ -73,6 +76,7 @@ function Retire-CMApplication {
             } else {
                 Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
                 Write-Host "Moved to Retired."
+            }
             }
 
             # retire the app
