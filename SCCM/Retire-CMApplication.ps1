@@ -16,8 +16,10 @@ function Retire-CMApplication {
 
     # for each provided app name, remove deployments, rename, and retire
     foreach ($RetiringAppName in $RetiringApps) {
-        if ($RetiringAppName = Get-CMApplication -Name $RetiringApp) {
-            Write-Host "So long, $RetiringApp!"
+
+        if ($RetiringApp = Get-CMApplication -Name $RetiringAppName)
+        {
+            Write-Host "So long, $RetiringAppName!"
 
             # checking retired status, setting to active so that we can make changes
             if ($RetiringApp.IsExpired)
@@ -41,12 +43,15 @@ function Retire-CMApplication {
             $DPs = Get-CMDistributionPoint -AllSite
             foreach ($DP in $DPs)
             {
-                $dpNetworkOSPath = $dp.NetworkOSPath #TODO: unify 2 variables
-                $dpName = ($dp.NetworkOSPath).Substring(2,$dpNetworkOSPath.Length-2)
+                #$dpNetworkOSPath = $dp.NetworkOSPath #TODO: unify 2 variables
+                $dpName = ($dp.NetworkOSPath).Substring(2)
+
+                
+                Write-Verbose "Removing $RetiringAppName from $dpName"
                 Write-Host -NoNewline "."
                 try
                 {
-                    Remove-CMContentDistribution -ApplicationName "$RetiringApp" -DistributionPointName $dpName -Force -EA SilentlyContinue
+                    Remove-CMContentDistribution -ApplicationName "$RetiringAppName" -DistributionPointName $dpName -Force -EA SilentlyContinue #TODO: parallelize this
                 }
                 catch { }
             }
@@ -56,35 +61,37 @@ function Retire-CMApplication {
             foreach ($DPG in $DPGs) {
                 Write-Host -NoNewline "."
                 try {
-                    Remove-CMContentDistribution -ApplicationName $RetiringAppName -DistributionPointGroupName ($DPG).Name -Force -EA SilentlyContinue
+                    Remove-CMContentDistribution -ApplicationName "$RetiringAppName" -DistributionPointGroupName ($DPG).Name -Force -EA SilentlyContinue #TODO: parallelize this
                 } catch { }
             }
             Write-Host
 
-            # rename the app
-            $RetiringAppName = $RetiringApp.Replace('Retired-', '')
             If ($rename){
-            try {
-                Set-CMApplication -Name $RetiringAppName -NewName "Retired-$RetiringApp"
-            } catch { }
-            Write-Host "Renamed to Retired-$RetiringApp."
+                # rename the app
+                $RetiringAppName = $RetiringApp.Replace('Retired-', '')
+                try {
+                    Set-CMApplication -Name $RetiringAppName -NewName "Retired-$RetiringApp"
+                } catch { }
+                Write-Host "Renamed to Retired-$RetiringAppName."
 
-            # move the app according to category
-            if ($RetiringApp.LocalizedCategoryInstanceNames -eq "Mac") {
-                Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
-                Write-Host "Moved to Retired."
-            } else {
-                Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
-                Write-Host "Moved to Retired."
+                # move the app according to category
+                if ($RetiringApp.LocalizedCategoryInstanceNames -eq "Mac") {
+                    Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
+                    Write-Host "Moved to Retired."
+                } else {
+                    Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
+                    Write-Host "Moved to Retired."
+                }
             }
-            }
-
+            
             # retire the app
-            if (!$RetiringApp.IsExpired) {
-                $RetiringAppWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = 'Retired-$RetiringApp'"
-                $RetiringAppWMI.SetIsExpired($true) | Out-Null
+            if (!$RetiringApp.IsExpired)
+            {
+                Suspend-CMApplication -Name "$RetiringAppName"
                 Write-Host "Set status to Retired."
-            } else {
+            } 
+            else
+            {
                 Write-Host "Status was already set to Retired."
             }
 
