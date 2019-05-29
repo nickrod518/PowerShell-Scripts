@@ -2,7 +2,9 @@ function Retire-CMApplication {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        $RetiringApps = @()
+        $RetiringApps = @(),
+        [Parameter(Mandatory = $false)]
+        $rename = $false
     )
 
     # import cm module
@@ -13,15 +15,17 @@ function Retire-CMApplication {
     cd "$($PSD):"
 
     # for each provided app name, remove deployments, rename, and retire
-    foreach ($app in $RetiringApps) {
-        if ($RetiringApp = Get-CMApplication -Name $app) {
-            Write-Host "So long, $app!"
+    foreach ($RetiringAppName in $RetiringApps) {
+
+        if ($RetiringApp = Get-CMApplication -Name $RetiringAppName)
+        {
+            Write-Host "So long, $RetiringAppName!"
 
             # checking retired status, setting to active so that we can make changes
-            if ($RetiringApp.IsExpired) {
-                $appWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = '$app'"
-                $appWMI.SetIsExpired($false) | Out-Null
-                Write-Host "Setting Status of $app to Active so that changes can be made."
+            if ($RetiringApp.IsExpired)
+            {
+                Resume-CMApplication -Name "$RetiringAppName"
+                Write-Host "Setting Status of $RetiringAppName to Active so that changes can be made."
             }
 
             $oldDeploys = Get-CMDeployment -SoftwareName $RetiringApp.LocalizedDisplayName
@@ -29,19 +33,26 @@ function Retire-CMApplication {
             # remove all deployments for the app
             if ($oldDeploys) {
                 $oldDeploys | ForEach-Object {
-                    Remove-CMDeployment -ApplicationName $app -DeploymentId $_.DeploymentID -Force
+                    Remove-CMDeployment -ApplicationName $RetiringAppName -DeploymentId $_.DeploymentID -Force
                 }
-                Write-Host "Removed $($oldDeploys.Count) deployments of $app."
+                Write-Host "Removed $($oldDeploys.Count) deployments of $RetiringApp."
             }
 
             # remove content from all dp's and dpg's
             Write-Host -NoNewline "Removing content from all distribution points"
-            $DPs = Get-CMDistributionPoint
-            foreach ($DP in $DPs) {
+            $DPs = Get-CMDistributionPoint -AllSite
+            foreach ($DP in $DPs)
+            {
+                $dpName = ($dp.NetworkOSPath).Substring(2)
+
+                
+                Write-Verbose "Removing $RetiringAppName from $dpName"
                 Write-Host -NoNewline "."
-                try {
-                    Remove-CMContentDistribution -Application $RetiringApp -DistributionPointName ($DP).NetworkOSPath -Force -EA SilentlyContinue
-                } catch { }
+                try
+                {
+                    Remove-CMContentDistribution -ApplicationName "$RetiringAppName" -DistributionPointName $dpName -Force -EA SilentlyContinue #TODO: parallelize this
+                }
+                catch { }
             }
             Write-Host
             Write-Host -NoNewline "Removing content from all distribution point groups"
@@ -49,33 +60,37 @@ function Retire-CMApplication {
             foreach ($DPG in $DPGs) {
                 Write-Host -NoNewline "."
                 try {
-                    Remove-CMContentDistribution -Application $RetiringApp -DistributionPointGroupName ($DPG).Name -Force -EA SilentlyContinue
+                    Remove-CMContentDistribution -ApplicationName "$RetiringAppName" -DistributionPointGroupName ($DPG).Name -Force -EA SilentlyContinue #TODO: parallelize this
                 } catch { }
             }
             Write-Host
 
-            # rename the app
-            $app = $app.Replace('Retired-', '')
-            try {
-                Set-CMApplication -Name $app -NewName "Retired-$app"
-            } catch { }
-            Write-Host "Renamed to Retired-$app."
+            If ($rename){
+                # rename the app
+                $RetiringAppName = $RetiringApp.Replace('Retired-', '')
+                try {
+                    Set-CMApplication -Name $RetiringAppName -NewName "Retired-$RetiringApp"
+                } catch { }
+                Write-Host "Renamed to Retired-$RetiringAppName."
 
-            # move the app according to category
-            if ($RetiringApp.LocalizedCategoryInstanceNames -eq "Mac") {
-                Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
-                Write-Host "Moved to Retired."
-            } else {
-                Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
-                Write-Host "Moved to Retired."
+                # move the app according to category
+                if ($RetiringApp.LocalizedCategoryInstanceNames -eq "Mac") {
+                    Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
+                    Write-Host "Moved to Retired."
+                } else {
+                    Move-CMObject -FolderPath "Application\Retired" -InputObject $RetiringApp
+                    Write-Host "Moved to Retired."
+                }
             }
-
+            
             # retire the app
-            if (!$RetiringApp.IsExpired) {
-                $appWMI = gwmi -Namespace Root\SMS\Site_$PSD -class SMS_ApplicationLatest -Filter "LocalizedDisplayName = 'Retired-$app'"
-                $appWMI.SetIsExpired($true) | Out-Null
+            if (!$RetiringApp.IsExpired)
+            {
+                Suspend-CMApplication -Name "$RetiringAppName"
                 Write-Host "Set status to Retired."
-            } else {
+            } 
+            else
+            {
                 Write-Host "Status was already set to Retired."
             }
 
@@ -85,7 +100,7 @@ function Retire-CMApplication {
             Write-Host "Don't forget to delete the source files from $loc."
 
         } else {
-            Write-Host "$app was not found. No actions performed."
+            Write-Host "$RetiringAppName was not found. No actions performed."
         }
     }
 }
