@@ -1,0 +1,1 @@
+I've migrated the Zoom module and scripts to their own repo for better visibility. I've also updated the repo to support their new auth and much more functionality. Check it out over at https://github.com/nickrod518/Zoom-PowerShell
